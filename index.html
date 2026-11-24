@@ -1,0 +1,3395 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KPI 週報計算工具</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAMDCz-ad9RmK_KXPgIRV1-phav4CdGskU",
+  authDomain: "kpi-tracker-3c23f.firebaseapp.com",
+  projectId: "kpi-tracker-3c23f",
+  storageBucket: "kpi-tracker-3c23f.firebasestorage.app",
+  messagingSenderId: "38204199209",
+  appId: "1:38204199209:web:84df71e670a7d0d0ce2738"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+// ── Firebase CRUD helpers ──
+// daily4: collection of docs keyed by date "2025-04-01"
+// sat: single doc "data" in collection "sat"
+// hist4: collection of docs keyed by wk "2025-W17"
+
+async function fbGetDaily(){
+  const snap = await getDocs(collection(db,'daily4'));
+  const arr = [];
+  snap.forEach(d => arr.push(d.data()));
+  arr.sort((a,b)=>a.date.localeCompare(b.date));
+  return arr;
+}
+async function fbSetDaily(rec){
+  await setDoc(doc(db,'daily4',rec.date), rec);
+}
+async function fbDeleteDaily(date){
+  await deleteDoc(doc(db,'daily4',date));
+}
+async function fbGetSat(){
+  const d = await getDoc(doc(db,'sat','data'));
+  return d.exists() ? d.data() : null;
+}
+async function fbSetSat(obj){
+  await setDoc(doc(db,'sat','data'), obj);
+}
+async function fbGetHist(){
+  const snap = await getDocs(collection(db,'hist4'));
+  const arr = [];
+  snap.forEach(d => arr.push(d.data()));
+  arr.sort((a,b)=>a.wk.localeCompare(b.wk));
+  return arr;
+}
+async function fbSetHist(rec){
+  await setDoc(doc(db,'hist4',rec.wk), rec);
+}
+async function fbDeleteHist(wk){
+  await deleteDoc(doc(db,'hist4',wk));
+}
+async function fbGetSatHist(){
+  const snap = await getDocs(collection(db,'satHist'));
+  const arr = [];
+  snap.forEach(d => arr.push(d.data()));
+  arr.sort((a,b)=>a.monStr.localeCompare(b.monStr));
+  return arr;
+}
+async function fbSetSatHist(rec){
+  await setDoc(doc(db,'satHist',rec.monStr), rec);
+}
+async function fbDeleteSatHist(monStr){
+  await deleteDoc(doc(db,'satHist',monStr));
+}
+async function fbGetAnomalyHist(){
+  const snap = await getDocs(collection(db,'anomalyHist'));
+  const arr = [];
+  snap.forEach(d => arr.push(d.data()));
+  arr.sort((a,b)=>a.monStr.localeCompare(b.monStr));
+  return arr;
+}
+async function fbSetAnomalyHist(rec){
+  await setDoc(doc(db,'anomalyHist',rec.monStr), rec);
+}
+async function fbDeleteAnomalyHist(monStr){
+  await deleteDoc(doc(db,'anomalyHist',monStr));
+}
+async function fbGetAnomalyHistShip(){
+  const snap = await getDocs(collection(db,'anomalyHistShip'));
+  const arr = [];
+  snap.forEach(d => arr.push(d.data()));
+  arr.sort((a,b)=>a.hmStart.localeCompare(b.hmStart));
+  return arr;
+}
+async function fbSetAnomalyHistShip(rec){
+  await setDoc(doc(db,'anomalyHistShip',rec.hmStart), rec);
+}
+async function fbDeleteAnomalyHistShip(hmStart){
+  await deleteDoc(doc(db,'anomalyHistShip',hmStart));
+}
+
+// ── Expose everything to global scope ──
+window.fbGetDaily    = fbGetDaily;
+window.fbSetDaily    = fbSetDaily;
+window.fbDeleteDaily = fbDeleteDaily;
+window.fbGetSat      = fbGetSat;
+window.fbSetSat      = fbSetSat;
+window.fbGetHist     = fbGetHist;
+window.fbSetHist     = fbSetHist;
+window.fbGetSatHist    = fbGetSatHist;
+window.fbSetSatHist    = fbSetSatHist;
+window.fbDeleteSatHist = fbDeleteSatHist;
+window.fbGetAnomalyHist    = fbGetAnomalyHist;
+window.fbSetAnomalyHist    = fbSetAnomalyHist;
+window.fbDeleteAnomalyHist = fbDeleteAnomalyHist;
+window.fbGetAnomalyHistShip    = fbGetAnomalyHistShip;
+window.fbSetAnomalyHistShip    = fbSetAnomalyHistShip;
+window.fbDeleteAnomalyHistShip = fbDeleteAnomalyHistShip;
+
+// Cache variables exposed globally
+window._dailyCache  = [];
+window._histCache   = [];
+window._satCache    = null;
+window._satHistCache= [];
+window._anomalyHistCache = [];
+window._anomalyHistShipCache = [];
+
+// loadAllData exposed globally
+window.loadAllData = async function(){
+  window._dailyCache   = await fbGetDaily();
+  window._histCache    = await fbGetHist();
+  window._satCache     = await fbGetSat();
+  window._satHistCache = await fbGetSatHist();
+  window._anomalyHistCache = await fbGetAnomalyHist();
+  window._anomalyHistShipCache = await fbGetAnomalyHistShip();
+};
+
+// Signal that Firebase is ready
+window.fbReady = true;
+window.fbReadyResolve && window.fbReadyResolve();
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Noto Sans TC','Microsoft JhengHei',sans-serif;background:#f5f4f0;color:#1a1a18;min-height:100vh;font-size:16px;}
+
+/* ── Nav ── */
+.nav{background:#fff;border-bottom:0.5px solid rgba(0,0,0,0.1);display:flex;align-items:center;padding:0 1.5rem;position:sticky;top:0;z-index:10;gap:0;}
+.nav-title{font-size:17px;font-weight:500;margin-right:1.5rem;padding:1rem 0;white-space:nowrap;}
+.nav-tab{padding:.85rem 1.1rem;font-size:14px;cursor:pointer;border:none;border-bottom:2px solid transparent;color:#888780;background:none;font-family:inherit;transition:color .15s;white-space:nowrap;}
+.nav-tab:hover{color:#1a1a18;}
+.nav-tab.active{color:#185FA5;border-bottom:2px solid #185FA5;font-weight:500;}
+
+/* ── Layout ── */
+.page{display:none;max-width:1200px;margin:0 auto;padding:2rem 1rem;}
+.page.active{display:block;}
+.page-title{font-size:24px;font-weight:500;margin-bottom:6px;}
+.page-sub{font-size:14px;color:#6b6b66;margin-bottom:1.75rem;}
+.sec{font-size:12px;font-weight:500;color:#888780;letter-spacing:.07em;text-transform:uppercase;margin:0 0 10px;}
+
+/* ── Cards ── */
+.card{background:#fff;border:.5px solid rgba(0,0,0,.11);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1rem;}
+.card-title{font-size:16px;font-weight:500;margin-bottom:4px;}
+.card-sub{font-size:13px;color:#888780;margin-bottom:12px;}
+
+/* ── Inputs ── */
+input[type="number"],input[type="text"],input[type="date"],select{border:.5px solid rgba(0,0,0,.18);border-radius:8px;padding:9px 12px;font-size:15px;font-family:inherit;outline:none;background:#fff;color:#1a1a18;width:100%;transition:border-color .15s;}
+input:focus,select:focus{border-color:#185FA5;}
+.ig{display:flex;flex-direction:column;gap:4px;}
+.ig label{font-size:11px;color:#6b6b66;}
+
+/* ── Buttons ── */
+button{background:#fff;border:.5px solid rgba(0,0,0,.2);border-radius:8px;padding:10px 20px;font-size:14px;font-family:inherit;cursor:pointer;color:#1a1a18;transition:background .12s,transform .1s;white-space:nowrap;}
+button:hover{background:#f5f4f0;}
+button:active{transform:scale(.98);}
+.bp{background:#185FA5;color:#fff;border-color:#185FA5;}
+.bp:hover{background:#0c4480;}
+.bd{color:#A32D2D;border-color:rgba(163,45,45,.3);}
+.bd:hover{background:#FCEBEB;}
+.bsm{padding:5px 12px;font-size:12px;}
+
+/* ── Account badge ── */
+.acct-badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;margin-bottom:8px;}
+.acc-A{background:#EAF3DE;color:#3B6D11;}
+.acc-B{background:#E8F0FB;color:#1a4a8a;}
+.acc-C{background:#FFF3E0;color:#8a4a00;}
+.acc-D{background:#F3E8FF;color:#5a1a8a;}
+.acc-G{background:#E0F7F4;color:#0a5c52;}
+
+/* ── Account row in daily input ── */
+.acct-row{display:grid;grid-template-columns:60px 1fr 1fr 80px;gap:8px;align-items:end;margin-bottom:8px;}
+.acct-row .rate-preview{font-size:15px;font-weight:500;color:#185FA5;padding-bottom:4px;}
+
+/* ── Summary boxes ── */
+.sum-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:1rem;}
+.sum-box{background:#f5f4f0;border-radius:10px;padding:.85rem 1rem;}
+.sum-box .val{font-size:22px;font-weight:500;margin-bottom:3px;}
+.sum-box .lbl{font-size:12px;color:#888780;}
+
+/* ── Tables ── */
+.table-card{background:#fff;border:.5px solid rgba(0,0,0,.11);border-radius:12px;overflow:hidden;margin-bottom:1.5rem;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;padding:8px 12px;font-size:12px;font-weight:500;color:#888780;border-bottom:.5px solid rgba(0,0,0,.1);white-space:nowrap;}
+td{padding:10px 12px;border-bottom:.5px solid rgba(0,0,0,.06);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+.del-btn{background:none;border:none;color:#ccc;cursor:pointer;font-size:13px;padding:0 4px;}
+.del-btn:hover{color:#A32D2D;background:none;}
+
+/* ── Satisfaction input ── */
+.sat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:1rem;}
+.sat-card{background:#fff;border:.5px solid rgba(0,0,0,.11);border-radius:12px;padding:1rem 1.25rem;}
+.sat-stars{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:10px 0;}
+.sat-stars .ig label{font-size:11px;color:#888780;text-align:center;}
+.sat-stars input{text-align:center;}
+.sat-result{background:#f5f4f0;border-radius:8px;padding:8px 12px;font-size:13px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;}
+.sat-pct{font-size:18px;font-weight:500;color:#185FA5;}
+.sat-total-card{background:#fff;border:.5px solid rgba(0,0,0,.11);border-radius:12px;padding:1rem 1.5rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;}
+.sat-total-num{font-size:32px;font-weight:500;color:#185FA5;}
+
+/* ── KPI score cards ── */
+.kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1rem;}
+.kpi-card{background:#fff;border:.5px solid rgba(0,0,0,.11);border-radius:12px;padding:1rem 1.25rem;}
+.kpi-card .name{font-size:15px;font-weight:500;margin-bottom:4px;}
+.kpi-card .meta{font-size:12px;color:#888780;margin-bottom:10px;}
+.krow{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:#6b6b66;margin-top:4px;}
+.pill{font-size:12px;padding:3px 10px;border-radius:8px;font-weight:500;}
+.pg{background:#EAF3DE;color:#3B6D11;}
+.pa{background:#FAEEDA;color:#854F0B;}
+.pr{background:#FCEBEB;color:#A32D2D;}
+.pn{background:#f0efe8;color:#888780;}
+
+/* ── Total card ── */
+.total-card{background:#fff;border:.5px solid rgba(0,0,0,.11);border-radius:12px;padding:1.25rem 1.5rem;display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;}
+.total-score{font-size:46px;font-weight:500;line-height:1;}
+.total-meta{font-size:14px;color:#888780;margin-top:2px;}
+.grade{font-size:32px;font-weight:500;text-align:right;}
+.grade-lbl{font-size:12px;color:#888780;margin-top:4px;}
+.breakdown{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.bdi{font-size:11px;color:#6b6b66;background:#f5f4f0;border-radius:6px;padding:2px 8px;}
+
+/* ── Chart ── */
+.chart-wrap{position:relative;width:100%;height:240px;margin-bottom:8px;}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:#6b6b66;margin-top:6px;}
+.legend-item{display:flex;align-items:center;gap:5px;}
+.legend-line{display:inline-block;width:18px;height:2px;}
+.empty{text-align:center;color:#aaa;font-size:13px;padding:2rem 0;}
+.week-bar{display:flex;gap:10px;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;}
+.week-bar select{width:auto;min-width:220px;}
+
+@media(max-width:640px){
+  .acct-row{grid-template-columns:50px 1fr 1fr 60px;}
+  .kpi-grid{grid-template-columns:1fr;}
+  .sum-grid{grid-template-columns:1fr 1fr;}
+  .sat-grid{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <span class="nav-title">📊 KPI 追蹤</span>
+  <button class="nav-tab active" onclick="showPage('reply',this)">訊息回覆率</button>
+  <button class="nav-tab" onclick="showPage('order',this)">回覆轉單率</button>
+  <button class="nav-tab" onclick="showPage('satisfy',this)">服務滿意度</button>
+  <button class="nav-tab" onclick="showPage('weekly',this)">每週 KPI</button>
+  <button class="nav-tab" onclick="showPage('quarter',this)">期間統計</button>
+  <button class="nav-tab" onclick="showPage('platform',this)">平台分析</button>
+  <button class="nav-tab" onclick="showPage('trend',this)">歷週趨勢</button>
+  <button class="nav-tab" onclick="showPage('anomaly',this)">異常率追蹤</button>
+  <button class="nav-tab" id="shopee-tab" onclick="showPage('shopee',this)">🔗 蝦皮串接</button>
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center;padding:0 0.5rem;">
+    <button class="bsm bp" onclick="exportBackup()" style="font-size:12px;">⬇ 匯出備份</button>
+    <label class="bsm" style="cursor:pointer;padding:5px 12px;border:.5px solid rgba(0,0,0,.2);border-radius:8px;font-size:12px;background:#fff;">
+      ⬆ 匯入還原<input type="file" id="import-file" accept=".json" style="display:none;" onchange="importBackup(event)">
+    </label>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════
+     PAGE 1: 訊息回覆率
+══════════════════════════════ -->
+<div class="page active" id="page-reply">
+  <h1 class="page-title">訊息回覆率</h1>
+  <p class="page-sub">每天從蝦皮報表輸入五個帳號的回覆率（%），系統計算本週五帳平均</p>
+
+  <p class="sec">新增今日回覆率</p>
+  <div class="card">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:1.25rem;align-items:flex-end;">
+      <div class="ig" style="flex:0 0 160px;">
+        <label>日期</label>
+        <input type="date" id="d-date">
+      </div>
+    </div>
+    <div style="font-size:11px;color:#888780;margin-bottom:10px;">直接輸入蝦皮報表的回覆率 %，不需要計算</div>
+    <div style="display:grid;grid-template-columns:50px 1fr;gap:4px 8px;align-items:center;margin-bottom:4px;">
+      <div></div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">
+        <div style="text-align:center;"><span class="acct-badge acc-A" style="margin:0;">帳號 A</span></div>
+        <div style="text-align:center;"><span class="acct-badge acc-B" style="margin:0;">帳號 B</span></div>
+        <div style="text-align:center;"><span class="acct-badge acc-C" style="margin:0;">帳號 C</span></div>
+        <div style="text-align:center;"><span class="acct-badge acc-D" style="margin:0;">帳號 D</span></div>
+        <div style="text-align:center;"><span class="acct-badge acc-G" style="margin:0;">帳號 G</span></div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:50px 1fr;gap:8px;align-items:center;margin-bottom:10px;">
+      <div style="font-size:12px;color:#6b6b66;">回覆率%</div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">
+        <input type="number" id="rr-A" min="0" max="100" step="0.1" placeholder="%" oninput="updateReplyPreview()">
+        <input type="number" id="rr-B" min="0" max="100" step="0.1" placeholder="%" oninput="updateReplyPreview()">
+        <input type="number" id="rr-C" min="0" max="100" step="0.1" placeholder="%" oninput="updateReplyPreview()">
+        <input type="number" id="rr-D" min="0" max="100" step="0.1" placeholder="%" oninput="updateReplyPreview()">
+        <input type="number" id="rr-G" min="0" max="100" step="0.1" placeholder="%" oninput="updateReplyPreview()">
+      </div>
+    </div>
+    <div style="padding:8px 12px;background:#f5f4f0;border-radius:8px;font-size:13px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:1.25rem;">
+      <span style="color:#6b6b66;">今日五帳平均：</span>
+      <span id="prev-reply-avg" style="font-size:16px;font-weight:500;color:#185FA5;">—</span>
+    </div>
+    <button class="bp" onclick="saveReplyRecord()">儲存今日回覆率 →</button>
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+    <p class="sec" style="margin:0">本週已記錄（<span id="reply-week-label">—</span>）</p>
+    <div style="display:flex;gap:6px;">
+      <button class="bsm" onclick="changeWeek('reply',-1)">← 上週</button>
+      <button class="bsm" onclick="changeWeek('reply',0)">本週</button>
+      <button class="bsm" onclick="changeWeek('reply',1)">下週 →</button>
+    </div>
+  </div>
+
+  <div class="sum-grid">
+    <div class="sum-box"><div class="val" id="sum-rA">—</div><div class="lbl">帳號A 週平均</div></div>
+    <div class="sum-box"><div class="val" id="sum-rB">—</div><div class="lbl">帳號B 週平均</div></div>
+    <div class="sum-box"><div class="val" id="sum-rC">—</div><div class="lbl">帳號C 週平均</div></div>
+    <div class="sum-box"><div class="val" id="sum-rD">—</div><div class="lbl">帳號D 週平均</div></div>
+    <div class="sum-box"><div class="val" id="sum-rG">—</div><div class="lbl">帳號G 週平均</div></div>
+  </div>
+  <div style="margin-bottom:1rem;padding:10px 14px;background:#fff;border:.5px solid rgba(0,0,0,.11);border-radius:10px;">
+    <span style="font-size:12px;color:#888780;">五帳週平均回覆率：</span>
+    <span id="sum-reply-avg" style="font-size:20px;font-weight:500;color:#185FA5;">—</span>
+  </div>
+
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr>
+          <th>日期</th>
+          <th>帳號 A</th><th>帳號 B</th><th>帳號 C</th><th>帳號 D</th><th>帳號 G</th>
+          <th>五帳平均</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="reply-tbody"></tbody>
+    </table>
+    <div class="empty" id="reply-empty" style="padding:1.5rem;">本週尚無記錄</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     PAGE 2: 回覆轉單率
+══════════════════════════════ -->
+<div class="page" id="page-order">
+  <h1 class="page-title">回覆轉單率</h1>
+  <p class="page-sub">每天輸入五個帳號的已回覆訊息數及買家數，系統計算轉單率；銷售額純記錄</p>
+
+  <p class="sec">新增今日數據</p>
+  <div class="card">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:1.25rem;align-items:flex-end;">
+      <div class="ig" style="flex:0 0 160px;">
+        <label>日期</label>
+        <input type="date" id="d-date2">
+      </div>
+    </div>
+
+    <!-- 帳號標題列 -->
+    <div style="display:grid;grid-template-columns:80px repeat(5,1fr);gap:8px;margin-bottom:6px;align-items:center;">
+      <div></div>
+      <div style="text-align:center;"><span class="acct-badge acc-A" style="margin:0;">帳號 A</span></div>
+      <div style="text-align:center;"><span class="acct-badge acc-B" style="margin:0;">帳號 B</span></div>
+      <div style="text-align:center;"><span class="acct-badge acc-C" style="margin:0;">帳號 C</span></div>
+      <div style="text-align:center;"><span class="acct-badge acc-D" style="margin:0;">帳號 D</span></div>
+      <div style="text-align:center;"><span class="acct-badge acc-G" style="margin:0;">帳號 G</span></div>
+    </div>
+    <!-- 已回覆訊息數 -->
+    <div style="display:grid;grid-template-columns:80px repeat(5,1fr);gap:8px;margin-bottom:8px;align-items:center;">
+      <div style="font-size:11px;color:#6b6b66;line-height:1.4;">已回覆<br>訊息數（則）</div>
+      <input type="number" id="d-repA" min="0" step="1" placeholder="則" oninput="updateOrderPreview()">
+      <input type="number" id="d-repB" min="0" step="1" placeholder="則" oninput="updateOrderPreview()">
+      <input type="number" id="d-repC" min="0" step="1" placeholder="則" oninput="updateOrderPreview()">
+      <input type="number" id="d-repD" min="0" step="1" placeholder="則" oninput="updateOrderPreview()">
+      <input type="number" id="d-repG" min="0" step="1" placeholder="則" oninput="updateOrderPreview()">
+    </div>
+    <!-- 買家數 -->
+    <div style="display:grid;grid-template-columns:80px repeat(5,1fr);gap:8px;margin-bottom:8px;align-items:center;">
+      <div style="font-size:11px;color:#6b6b66;">買家數（人）</div>
+      <input type="number" id="d-buyA" min="0" step="1" placeholder="人" oninput="updateOrderPreview()">
+      <input type="number" id="d-buyB" min="0" step="1" placeholder="人" oninput="updateOrderPreview()">
+      <input type="number" id="d-buyC" min="0" step="1" placeholder="人" oninput="updateOrderPreview()">
+      <input type="number" id="d-buyD" min="0" step="1" placeholder="人" oninput="updateOrderPreview()">
+      <input type="number" id="d-buyG" min="0" step="1" placeholder="人" oninput="updateOrderPreview()">
+    </div>
+    <!-- 即時轉單率 -->
+    <div style="display:grid;grid-template-columns:80px repeat(5,1fr);gap:8px;margin-bottom:8px;align-items:center;">
+      <div style="font-size:11px;color:#6b6b66;">轉單率</div>
+      <div style="text-align:center;font-size:14px;font-weight:500;color:#185FA5;" id="prev-orA">—</div>
+      <div style="text-align:center;font-size:14px;font-weight:500;color:#185FA5;" id="prev-orB">—</div>
+      <div style="text-align:center;font-size:14px;font-weight:500;color:#185FA5;" id="prev-orC">—</div>
+      <div style="text-align:center;font-size:14px;font-weight:500;color:#185FA5;" id="prev-orD">—</div>
+      <div style="text-align:center;font-size:14px;font-weight:500;color:#185FA5;" id="prev-orG">—</div>
+    </div>
+    <!-- 銷售額 -->
+    <div style="display:grid;grid-template-columns:80px repeat(5,1fr);gap:8px;margin-bottom:8px;align-items:center;">
+      <div style="font-size:11px;color:#6b6b66;">銷售額（元）<br><span style="color:#aaa;">記錄用</span></div>
+      <input type="number" id="d-salA" min="0" step="1" placeholder="元">
+      <input type="number" id="d-salB" min="0" step="1" placeholder="元">
+      <input type="number" id="d-salC" min="0" step="1" placeholder="元">
+      <input type="number" id="d-salD" min="0" step="1" placeholder="元">
+      <input type="number" id="d-salG" min="0" step="1" placeholder="元">
+    </div>
+
+    <div style="padding:8px 12px;background:#f5f4f0;border-radius:8px;font-size:13px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:1.25rem;">
+      <span style="color:#6b6b66;">今日五帳加總轉單率：</span>
+      <span id="prev-order-total" style="font-size:16px;font-weight:500;color:#185FA5;">—</span>
+    </div>
+    <button class="bp" onclick="saveOrderRecord()">儲存今日轉單率 →</button>
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+    <p class="sec" style="margin:0">本週已記錄（<span id="order-week-label">—</span>）</p>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;user-select:none;margin-right:6px;">
+        <input type="checkbox" id="order-weekday-only" onchange="toggleOrderWeekday()" style="cursor:pointer;">
+        <span>只看平日</span>
+      </label>
+      <button class="bsm" onclick="changeWeek('order',-1)">← 上週</button>
+      <button class="bsm" onclick="changeWeek('order',0)">本週</button>
+      <button class="bsm" onclick="changeWeek('order',1)">下週 →</button>
+    </div>
+  </div>
+
+  <div style="margin-bottom:1rem;padding:10px 14px;background:#fff;border:.5px solid rgba(0,0,0,.11);border-radius:10px;">
+    <div style="display:flex;gap:24px;flex-wrap:wrap;">
+      <div><span style="font-size:12px;color:#888780;" id="sum-label-rate">本週累計轉單率：</span><span id="sum-order-rate" style="font-size:20px;font-weight:500;color:#185FA5;">—</span></div>
+      <div><span style="font-size:12px;color:#888780;" id="sum-label-sales">本週總銷售額：</span><span id="sum-sales" style="font-size:20px;font-weight:500;color:#185FA5;">—</span></div>
+    </div>
+    <div id="sum-holiday-info" style="display:none;margin-top:8px;padding-top:8px;border-top:.5px dashed rgba(0,0,0,.08);font-size:11px;color:#888780;"></div>
+  </div>
+
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr>
+          <th rowspan="2">日期</th>
+          <th colspan="3" style="text-align:center;border-bottom:.5px solid rgba(0,0,0,.06);">帳號 A</th>
+          <th colspan="3" style="text-align:center;border-bottom:.5px solid rgba(0,0,0,.06);">帳號 B</th>
+          <th colspan="3" style="text-align:center;border-bottom:.5px solid rgba(0,0,0,.06);">帳號 C</th>
+          <th colspan="3" style="text-align:center;border-bottom:.5px solid rgba(0,0,0,.06);">帳號 D</th>
+          <th colspan="3" style="text-align:center;border-bottom:.5px solid rgba(0,0,0,.06);">帳號 G</th>
+          <th rowspan="2">五帳轉單率</th>
+          <th rowspan="2">總銷售額</th>
+          <th rowspan="2"></th>
+        </tr>
+        <tr>
+          <th>回覆數</th><th>買家數</th><th>轉單率</th>
+          <th>回覆數</th><th>買家數</th><th>轉單率</th>
+          <th>回覆數</th><th>買家數</th><th>轉單率</th>
+          <th>回覆數</th><th>買家數</th><th>轉單率</th>
+          <th>回覆數</th><th>買家數</th><th>轉單率</th>
+        </tr>
+      </thead>
+      <tbody id="order-tbody"></tbody>
+    </table>
+    <div class="empty" id="order-empty" style="padding:1.5rem;">本週尚無記錄</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     PAGE 2: 服務滿意度
+══════════════════════════════ -->
+<div class="page" id="page-satisfy">
+  <h1 class="page-title">服務滿意度</h1>
+  <p class="page-sub">輸入五個蝦皮帳號的評價星數，系統計算各帳滿意度及五帳加權總平均</p>
+
+  <!-- 週次切換 -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+    <p class="sec" style="margin:0">查看週次（<span id="sat-week-label">—</span>）<span id="sat-week-status" style="font-size:10px;color:#aaa;margin-left:6px;"></span></p>
+    <div style="display:flex;gap:6px;">
+      <button class="bsm" onclick="changeSatWeek(-1)">← 上週</button>
+      <button class="bsm" onclick="changeSatWeek(0)">本週</button>
+      <button class="bsm" onclick="changeSatWeek(1)">下週 →</button>
+    </div>
+  </div>
+
+  <p class="sec">累積評價輸入（1★ ～ 5★）</p>
+  <div style="font-size:12px;color:#888780;margin-bottom:12px;">每週輸入一次，直接填入截至目前的累積總評價數即可；下週再更新成新的累積數字。儲存後系統會自動為本週留下快照。</div>
+
+  <div class="table-card" style="margin-bottom:1rem;">
+    <table style="font-size:13px;">
+      <thead>
+        <tr>
+          <th style="width:100px;">星級</th>
+          <th><span class="acct-badge acc-A" style="margin:0;">帳號 A</span></th>
+          <th><span class="acct-badge acc-B" style="margin:0;">帳號 B</span></th>
+          <th><span class="acct-badge acc-C" style="margin:0;">帳號 C</span></th>
+          <th><span class="acct-badge acc-D" style="margin:0;">帳號 D</span></th>
+          <th><span class="acct-badge acc-G" style="margin:0;">帳號 G</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="color:#888780;">⭐ 1 星</td>
+          <td><input type="number" id="sA1" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;"></td>
+          <td><input type="number" id="sB1" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;"></td>
+          <td><input type="number" id="sC1" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;"></td>
+          <td><input type="number" id="sD1" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;"></td>
+          <td><input type="number" id="sG1" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;"></td>
+        </tr>
+        <tr>
+          <td style="color:#888780;">⭐⭐ 2 星</td>
+          <td><input type="number" id="sA2" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;"></td>
+          <td><input type="number" id="sB2" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;"></td>
+          <td><input type="number" id="sC2" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;"></td>
+          <td><input type="number" id="sD2" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;"></td>
+          <td><input type="number" id="sG2" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;"></td>
+        </tr>
+        <tr>
+          <td style="color:#888780;">⭐⭐⭐ 3 星</td>
+          <td><input type="number" id="sA3" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;"></td>
+          <td><input type="number" id="sB3" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;"></td>
+          <td><input type="number" id="sC3" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;"></td>
+          <td><input type="number" id="sD3" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;"></td>
+          <td><input type="number" id="sG3" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;"></td>
+        </tr>
+        <tr style="background:#f9fdf5;">
+          <td style="color:#3B6D11;font-weight:500;">⭐⭐⭐⭐ 4 星</td>
+          <td><input type="number" id="sA4" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;border-color:rgba(59,109,17,0.3);"></td>
+          <td><input type="number" id="sB4" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;border-color:rgba(59,109,17,0.3);"></td>
+          <td><input type="number" id="sC4" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;border-color:rgba(59,109,17,0.3);"></td>
+          <td><input type="number" id="sD4" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;border-color:rgba(59,109,17,0.3);"></td>
+          <td><input type="number" id="sG4" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;border-color:rgba(59,109,17,0.3);"></td>
+        </tr>
+        <tr style="background:#f9fdf5;">
+          <td style="color:#3B6D11;font-weight:500;">⭐⭐⭐⭐⭐ 5 星</td>
+          <td><input type="number" id="sA5" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;border-color:rgba(59,109,17,0.3);"></td>
+          <td><input type="number" id="sB5" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;border-color:rgba(59,109,17,0.3);"></td>
+          <td><input type="number" id="sC5" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;border-color:rgba(59,109,17,0.3);"></td>
+          <td><input type="number" id="sD5" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;border-color:rgba(59,109,17,0.3);"></td>
+          <td><input type="number" id="sG5" min="0" step="1" placeholder="0" oninput="calcSat()" style="width:100%;border-color:rgba(59,109,17,0.3);"></td>
+        </tr>
+        <tr style="background:#f5f4f0;">
+          <td style="font-weight:500;color:#6b6b66;">總評價數</td>
+          <td style="font-weight:500;"><span id="sA-total">0</span> 則</td>
+          <td style="font-weight:500;"><span id="sB-total">0</span> 則</td>
+          <td style="font-weight:500;"><span id="sC-total">0</span> 則</td>
+          <td style="font-weight:500;"><span id="sD-total">0</span> 則</td>
+          <td style="font-weight:500;"><span id="sG-total">0</span> 則</td>
+        </tr>
+        <tr style="background:#f5f4f0;">
+          <td style="font-weight:500;color:#6b6b66;">滿意度</td>
+          <td><span class="sat-pct" id="sA-pct" style="font-size:15px;">—</span></td>
+          <td><span class="sat-pct" id="sB-pct" style="font-size:15px;">—</span></td>
+          <td><span class="sat-pct" id="sC-pct" style="font-size:15px;">—</span></td>
+          <td><span class="sat-pct" id="sD-pct" style="font-size:15px;">—</span></td>
+          <td><span class="sat-pct" id="sG-pct" style="font-size:15px;">—</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 五帳總平均 -->
+  <div class="sat-total-card">
+    <div>
+      <div style="font-size:13px;color:#6b6b66;margin-bottom:4px;">五帳加權總平均滿意度</div>
+      <div class="sat-total-num" id="sat-overall">—</div>
+      <div style="font-size:12px;color:#888780;margin-top:4px;">計算方式：(五帳 4★+5★ 總數) ÷ 五帳總評價數</div>
+      <div style="font-size:11px;color:#aaa;margin-top:2px;">總評價數：<span id="sat-grand-total">0</span> 則｜正面評價：<span id="sat-grand-pos">0</span> 則</div>
+    </div>
+    <div style="text-align:right;">
+      <button class="bp bsm" onclick="saveSatData()" id="sat-save-btn">儲存本週滿意度 →</button>
+    </div>
+  </div>
+
+  <!-- 本週新增評價(差值) -->
+  <div id="sat-delta-card" style="display:none;background:#fff;border:.5px solid rgba(0,0,0,.11);border-radius:12px;padding:1.25rem 1.5rem;margin-top:1rem;">
+    <p class="sec" style="margin-bottom:10px;">本週新增評價（與上週快照比較）</p>
+    <div id="sat-delta-content"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     PAGE 3: 每週KPI
+══════════════════════════════ -->
+<div class="page" id="page-weekly">
+  <h1 class="page-title">每週 KPI 計算</h1>
+  <p class="page-sub">系統自動從每日記錄及滿意度計算本週各項KPI分數</p>
+
+  <div class="week-bar">
+    <select id="kpi-week-sel" onchange="renderKPI()"></select>
+  </div>
+
+  <p class="sec">手動輸入指標</p>
+  <div class="card" style="margin-bottom:1.5rem;">
+    <div class="card-title">留任率（當季）</div>
+    <div class="card-sub">目標 100%｜(總人數-離職)/總人數｜權重10分</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;">
+      <div class="ig"><label>部門總人數</label><input type="number" id="kpi-total-ppl" min="0" step="1" placeholder="人" oninput="renderKPI()"></div>
+      <div class="ig"><label>當季離職人數</label><input type="number" id="kpi-quit-ppl" min="0" step="1" placeholder="人" oninput="renderKPI()"></div>
+      <div style="padding-bottom:4px;"><span id="kpi-ret-pct-preview" style="font-size:16px;font-weight:500;color:#185FA5;">—</span><div style="font-size:10px;color:#aaa;">留任率</div></div>
+    </div>
+  </div>
+
+  <p class="sec">本週 KPI 分數</p>
+  <div id="kpi-no-data" class="empty" style="display:none;">這週沒有每日記錄，請先到「每日記錄」輸入資料</div>
+
+  <div id="kpi-result-wrap">
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="name">訊息回覆率</div>
+        <div class="meta">目標 100%｜每少1%扣1分｜權重15分</div>
+        <div class="krow"><span>五帳週平均回覆率</span><span id="kr-reply-pct" style="font-weight:500">—</span></div>
+        <div style="font-size:11px;color:#aaa;margin:4px 0 4px 0;" id="kr-reply-detail">—</div>
+        <div class="krow"><span>達成率（目標 100%）</span><span id="kr-reply-ach" style="font-weight:500">—</span></div>
+        <div class="krow"><span>原始分</span><span id="kr-reply-raw" class="pill pn">—</span></div>
+        <div class="krow"><span>加權分（×15%）</span><span id="kr-reply-w" style="font-weight:500;color:#185FA5">—</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="name">服務滿意度</div>
+        <div class="meta">目標 99%｜每少2%扣5分｜權重15分</div>
+        <div class="krow"><span>五帳加權滿意度</span><span id="kr-sat-pct" style="font-weight:500">—</span></div>
+        <div class="krow" style="margin-top:4px;"><span>達成率（目標 99%）</span><span id="kr-sat-ach" style="font-weight:500">—</span></div>
+        <div class="krow"><span>原始分</span><span id="kr-sat-raw" class="pill pn">—</span></div>
+        <div class="krow"><span>加權分（×15%）</span><span id="kr-sat-w" style="font-weight:500;color:#185FA5">—</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="name">回覆轉單率</div>
+        <div class="meta">目標 13%｜每多1%加7.69分｜權重15分</div>
+        <div class="krow"><span>本週加總轉單率</span><span id="kr-order-pct" style="font-weight:500">—</span></div>
+        <div class="krow" style="margin-top:4px;"><span>達成率（目標 13%）</span><span id="kr-order-ach" style="font-weight:500">—</span></div>
+        <div class="krow"><span>原始分</span><span id="kr-order-raw" class="pill pn">—</span></div>
+        <div class="krow"><span>加權分（×15%）</span><span id="kr-order-w" style="font-weight:500;color:#185FA5">—</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="name">留任率</div>
+        <div class="meta">目標 100%｜每少1%扣1分｜權重10分</div>
+        <div class="krow"><span>當季留任率</span><span id="kr-ret-pct" style="font-weight:500">—</span></div>
+        <div class="krow" style="margin-top:4px;"><span>達成率（目標 100%）</span><span id="kr-ret-ach" style="font-weight:500">—</span></div>
+        <div class="krow"><span>原始分</span><span id="kr-ret-raw" class="pill pn">—</span></div>
+        <div class="krow"><span>加權分（×10%）</span><span id="kr-ret-w" style="font-weight:500;color:#185FA5">—</span></div>
+      </div>
+    </div>
+
+    <div class="total-card">
+      <div>
+        <div style="font-size:13px;color:#6b6b66;margin-bottom:4px;">本週 KPI 加權總分</div>
+        <div class="total-score" id="kpi-total">—</div>
+        <div class="total-meta">滿分 55 分</div>
+        <div class="breakdown" id="kpi-breakdown"></div>
+      </div>
+      <div style="text-align:right;">
+        <div class="grade" id="kpi-grade">—</div>
+        <div class="grade-lbl" id="kpi-grade-lbl"></div>
+        <div style="margin-top:14px;"><button class="bp bsm" onclick="saveWeeklyKPI()">儲存本週KPI →</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════
+     PAGE 6: 季平均
+══════════════════════════════ -->
+<div class="page" id="page-quarter">
+  <h1 class="page-title">期間統計</h1>
+  <p class="page-sub">自由挑選日期區間，自動計算該區間的回覆率、轉單率與各項指標</p>
+
+  <!-- 模式切換列 -->
+  <div style="display:flex;gap:6px;margin-bottom:0.75rem;flex-wrap:wrap;">
+    <button class="bsm" id="q-mode-quarter" onclick="setQMode('quarter')">季度</button>
+    <button class="bsm" id="q-mode-quick" onclick="setQMode('quick')">快速區間</button>
+    <button class="bsm" id="q-mode-custom" onclick="setQMode('custom')">自訂日期</button>
+  </div>
+
+  <!-- 季度模式 -->
+  <div id="q-ctrl-quarter" style="display:flex;gap:10px;align-items:center;margin-bottom:1rem;flex-wrap:wrap;">
+    <select id="q-year" onchange="renderQuarter()" style="width:auto;min-width:100px;"></select>
+    <div style="display:flex;gap:6px;">
+      <button class="bsm" id="q-btn-1" onclick="selectQ(1)">Q1 1-3月</button>
+      <button class="bsm" id="q-btn-2" onclick="selectQ(2)">Q2 4-6月</button>
+      <button class="bsm" id="q-btn-3" onclick="selectQ(3)">Q3 7-9月</button>
+      <button class="bsm" id="q-btn-4" onclick="selectQ(4)">Q4 10-12月</button>
+    </div>
+  </div>
+
+  <!-- 快速區間模式 -->
+  <div id="q-ctrl-quick" style="display:none;gap:6px;margin-bottom:1rem;flex-wrap:wrap;">
+    <button class="bsm" onclick="selectQuick('thisWeek')">本週</button>
+    <button class="bsm" onclick="selectQuick('lastWeek')">上週</button>
+    <button class="bsm" onclick="selectQuick('thisMonth')">本月</button>
+    <button class="bsm" onclick="selectQuick('lastMonth')">上月</button>
+    <button class="bsm" onclick="selectQuick('last7')">近7天</button>
+    <button class="bsm" onclick="selectQuick('last30')">近30天</button>
+  </div>
+
+  <!-- 自訂日期模式 -->
+  <div id="q-ctrl-custom" style="display:none;gap:10px;align-items:end;margin-bottom:1rem;flex-wrap:wrap;">
+    <div class="ig" style="margin:0;"><label>起始日期</label><input type="date" id="q-custom-start" onchange="renderQuarter()" style="width:auto;"></div>
+    <div class="ig" style="margin:0;"><label>結束日期</label><input type="date" id="q-custom-end" onchange="renderQuarter()" style="width:auto;"></div>
+  </div>
+
+  <!-- 目前區間提示 -->
+  <div id="q-range-hint" style="font-size:12px;color:#888780;margin-bottom:0.5rem;">—</div>
+
+  <!-- 平日切換 -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;flex-wrap:wrap;">
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;user-select:none;">
+      <input type="checkbox" id="q-weekday-only" onchange="toggleWeekdayOnly('quarter')" style="cursor:pointer;">
+      <span>只看平日（排除週六日 + 國定假日）</span>
+    </label>
+    <button class="bsm" onclick="openHolidayManager()" style="font-size:11px;padding:4px 10px;">管理假日</button>
+    <span id="q-excluded-info" style="font-size:11px;color:#aaa;"></span>
+  </div>
+
+  <div id="q-empty" class="empty">這個區間還沒有任何資料</div>
+
+  <div id="q-wrap" style="display:none;">
+    <!-- 四大指標卡 -->
+    <p class="sec">期間 KPI 指標</p>
+    <div class="kpi-grid" style="margin-bottom:1.5rem;">
+      <div class="kpi-card">
+        <div class="name">訊息回覆率</div>
+        <div class="meta">目標 100%｜五帳每週平均再平均</div>
+        <div class="krow"><span>期間平均回覆率</span><span id="q-reply-pct" style="font-weight:500">—</span></div>
+        <div class="krow" style="margin-top:4px;"><span>達成率（目標 100%）</span><span id="q-reply-ach" style="font-weight:500">—</span></div>
+        <div class="krow"><span>原始分（參考）</span><span id="q-reply-raw" class="pill pn">—</span></div>
+        <div class="krow"><span>加權分（×15%）</span><span id="q-reply-w" style="font-weight:500;color:#185FA5">—</span></div>
+        <div class="krow" style="margin-top:4px;"><span>資料週數</span><span id="q-reply-weeks" style="color:#888780;">—</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="name">服務滿意度</div>
+        <div class="meta">目標 99%｜期間內新增評價的滿意度</div>
+        <div class="krow"><span>期間滿意度</span><span id="q-sat-pct" style="font-weight:500">—</span></div>
+        <div class="krow" style="margin-top:4px;"><span>達成率（目標 99%）</span><span id="q-sat-ach" style="font-weight:500">—</span></div>
+        <div class="krow"><span>原始分（參考）</span><span id="q-sat-raw" class="pill pn">—</span></div>
+        <div class="krow"><span>加權分（×15%）</span><span id="q-sat-w" style="font-weight:500;color:#185FA5">—</span></div>
+        <div style="font-size:10px;color:#aaa;margin-top:4px;" id="q-sat-weeks">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="name">回覆轉單率</div>
+        <div class="meta">目標 13%｜期間總買家÷總回覆數</div>
+        <div class="krow"><span>期間累計轉單率</span><span id="q-order-pct" style="font-weight:500">—</span></div>
+        <div class="krow" style="margin-top:4px;"><span>達成率（目標 13%）</span><span id="q-order-ach" style="font-weight:500">—</span></div>
+        <div class="krow"><span>原始分（參考）</span><span id="q-order-raw" class="pill pn">—</span></div>
+        <div class="krow"><span>加權分（×15%）</span><span id="q-order-w" style="font-weight:500;color:#185FA5">—</span></div>
+        <div class="krow" style="margin-top:4px;"><span>期間總回覆數</span><span id="q-order-rep" style="color:#888780;">—</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="name">留任率</div>
+        <div class="meta">目標 100%｜從已儲存週KPI平均</div>
+        <div class="krow"><span>當季留任率</span><span id="q-ret-pct" style="font-weight:500">—</span></div>
+        <div class="krow" style="margin-top:4px;"><span>達成率（目標 100%）</span><span id="q-ret-ach" style="font-weight:500">—</span></div>
+        <div class="krow"><span>原始分（參考）</span><span id="q-ret-raw" class="pill pn">—</span></div>
+        <div class="krow"><span>加權分（×10%）</span><span id="q-ret-w" style="font-weight:500;color:#185FA5">—</span></div>
+        <div class="krow" style="margin-top:4px;"><span>資料週數</span><span id="q-ret-weeks" style="color:#888780;">—</span></div>
+      </div>
+    </div>
+
+    <!-- 加權總分 -->
+    <div class="total-card" style="margin-bottom:1.5rem;">
+      <div>
+        <div style="font-size:13px;color:#6b6b66;margin-bottom:4px;">期間 KPI 加權總分（參考）</div>
+        <div class="total-score" id="q-total">—</div>
+        <div class="total-meta">滿分 55 分</div>
+        <div class="breakdown" id="q-breakdown"></div>
+      </div>
+      <div style="text-align:right;">
+        <div class="grade" id="q-grade">—</div>
+        <div class="grade-lbl" id="q-grade-lbl"></div>
+      </div>
+    </div>
+
+    <!-- 每日明細 -->
+    <p class="sec">區間內每日明細</p>
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>五帳平均回覆率</th>
+            <th>轉單率</th>
+          </tr>
+        </thead>
+        <tbody id="q-tbody"></tbody>
+      </table>
+      <div class="empty" id="q-table-empty" style="padding:1.5rem;display:none;">區間內尚無每日記錄</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     PAGE 7: 平台分析
+══════════════════════════════ -->
+<div class="page" id="page-platform">
+  <h1 class="page-title">平台分析</h1>
+  <p class="page-sub">挑選日期區間，分別查看四個蝦皮帳號各自的回覆率、轉單率與滿意度</p>
+
+  <!-- 模式切換列 -->
+  <div style="display:flex;gap:6px;margin-bottom:0.75rem;flex-wrap:wrap;">
+    <button class="bsm" id="p-mode-quick" onclick="setPMode('quick')">快速區間</button>
+    <button class="bsm" id="p-mode-custom" onclick="setPMode('custom')">自訂日期</button>
+  </div>
+
+  <!-- 快速區間模式 -->
+  <div id="p-ctrl-quick" style="display:flex;gap:6px;margin-bottom:1rem;flex-wrap:wrap;">
+    <button class="bsm" onclick="selectPQuick('thisWeek')">本週</button>
+    <button class="bsm" onclick="selectPQuick('lastWeek')">上週</button>
+    <button class="bsm" onclick="selectPQuick('thisMonth')">本月</button>
+    <button class="bsm" onclick="selectPQuick('lastMonth')">上月</button>
+    <button class="bsm" onclick="selectPQuick('last7')">近7天</button>
+    <button class="bsm" onclick="selectPQuick('last30')">近30天</button>
+  </div>
+
+  <!-- 自訂日期模式 -->
+  <div id="p-ctrl-custom" style="display:none;gap:10px;align-items:end;margin-bottom:1rem;flex-wrap:wrap;">
+    <div class="ig" style="margin:0;"><label>起始日期</label><input type="date" id="p-custom-start" onchange="renderPlatform()" style="width:auto;"></div>
+    <div class="ig" style="margin:0;"><label>結束日期</label><input type="date" id="p-custom-end" onchange="renderPlatform()" style="width:auto;"></div>
+  </div>
+
+  <!-- 目前區間提示 -->
+  <div id="p-range-hint" style="font-size:12px;color:#888780;margin-bottom:0.5rem;">—</div>
+
+  <!-- 平日切換 -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;flex-wrap:wrap;">
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;user-select:none;">
+      <input type="checkbox" id="p-weekday-only" onchange="toggleWeekdayOnly('platform')" style="cursor:pointer;">
+      <span>只看平日（排除週六日 + 國定假日）</span>
+    </label>
+    <button class="bsm" onclick="openHolidayManager()" style="font-size:11px;padding:4px 10px;">管理假日</button>
+    <span id="p-excluded-info" style="font-size:11px;color:#aaa;"></span>
+  </div>
+
+  <div id="p-empty" class="empty">這個區間還沒有任何資料</div>
+
+  <div id="p-wrap" style="display:none;">
+    <div class="kpi-grid" id="p-cards"></div>
+
+    <!-- 區間摘要 -->
+    <div style="margin-top:1.5rem;padding:1rem 1.25rem;background:#fff;border:.5px solid rgba(0,0,0,.11);border-radius:12px;">
+      <p class="sec" style="margin-bottom:8px;">五帳合計</p>
+      <div style="font-size:12px;color:#888780;line-height:1.7;" id="p-summary">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     PAGE 4: 歷週趨勢
+══════════════════════════════ -->
+<div class="page" id="page-trend">
+  <h1 class="page-title">歷週趨勢</h1>
+  <p class="page-sub">已儲存的每週 KPI 分數比較</p>
+  <div id="trend-empty" class="empty">尚無儲存記錄，請到「每週KPI」頁面計算並儲存</div>
+  <div id="trend-wrap" style="display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:0.75rem;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;user-select:none;">
+        <input type="checkbox" id="trend-weekday-only" onchange="toggleTrendWeekday()" style="cursor:pointer;">
+        <span>顯示「平日轉單率」對照線</span>
+      </label>
+      <div id="trend-legend-row" style="display:none;gap:14px;font-size:11px;color:#6b6b66;align-items:center;">
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:18px;height:3px;background:#1B6B7A;border-radius:2px;"></span>含假日轉單率</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:18px;height:3px;background:#8B2F3F;border-radius:2px;"></span>平日轉單率</span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:1rem;">
+      <div class="chart-wrap">
+        <canvas id="trendChart" role="img" aria-label="歷週轉單率趨勢">歷週轉單率趨勢</canvas>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:#888780;text-align:center;">
+        圖表顯示歷週「<b style="color:#1B6B7A;">回覆轉單率</b>」實際百分比，目標 13%
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <p class="sec" style="margin:0">歷週記錄明細</p>
+      <button class="bd bsm" onclick="clearAllKPI()">清除全部記錄</button>
+    </div>
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>週次</th>
+            <th>回覆率分</th>
+            <th>滿意度分</th>
+            <th>轉單率分</th>
+            <th>留任率分</th>
+            <th>加權總分</th>
+            <th>等級</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="trend-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     PAGE 8: 異常率追蹤
+══════════════════════════════ -->
+<div class="page" id="page-shopee">
+  <h1 class="page-title">🔗 蝦皮 API 串接</h1>
+  <p class="page-sub">設定完成後可自動抓取各帳號的蝦皮店鋪績效數據</p>
+
+  <!-- Partner 設定 -->
+  <div style="background:#fff;border:.5px solid rgba(0,0,0,.11);border-radius:12px;padding:1.25rem;margin-bottom:1rem;">
+    <h3 style="margin:0 0 1rem;font-size:15px;font-weight:500;">Partner 設定</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div class="ig"><label>Partner ID</label><input type="number" id="sp-partner-id" placeholder="例：2037746"></div>
+      <div class="ig"><label>Partner Key</label><input type="password" id="sp-partner-key" placeholder="shpk..."></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="bp" onclick="spSavePartner()">儲存 Partner 設定</button>
+      <span id="sp-partner-status" style="font-size:12px;color:#888780;align-self:center;"></span>
+    </div>
+  </div>
+
+  <!-- 帳號授權 -->
+  <div style="background:#fff;border:.5px solid rgba(0,0,0,.11);border-radius:12px;padding:1.25rem;margin-bottom:1rem;">
+    <h3 style="margin:0 0 0.5rem;font-size:15px;font-weight:500;">帳號授權</h3>
+    <p style="font-size:12px;color:#888780;margin:0 0 1rem;">點「授權」後登入對應的蝦皮賣家帳號，授權完成會自動回到此頁並儲存 Token</p>
+    <div id="sp-acct-list"></div>
+  </div>
+
+  <!-- 同步數據 -->
+  <div style="background:#fff;border:.5px solid rgba(0,0,0,.11);border-radius:12px;padding:1.25rem;margin-bottom:1rem;">
+    <h3 style="margin:0 0 0.5rem;font-size:15px;font-weight:500;">同步蝦皮數據</h3>
+    <p style="font-size:12px;color:#888780;margin:0 0 1rem;">從蝦皮抓取各帳號目前週期的回覆率與滿意度，並自動填入今日記錄</p>
+    <button class="bp" onclick="spSyncAll()" id="sp-sync-btn">🔄 同步所有帳號數據</button>
+    <div id="sp-sync-result" style="margin-top:1rem;font-size:13px;"></div>
+  </div>
+
+  <!-- 說明 -->
+  <div style="background:#f5f4f0;border-radius:10px;padding:1rem;font-size:12px;color:#6b6b66;line-height:1.7;">
+    <b>使用說明：</b><br>
+    1. 填入 Partner ID 和 Partner Key 並儲存<br>
+    2. 對每個帳號點「授權」，用對應的蝦皮賣家帳號登入<br>
+    3. 授權後 Token 自動儲存在此瀏覽器<br>
+    4. 每次要更新數據時點「同步所有帳號數據」<br>
+    <br>
+    <b>注意：</b>Token 有效期 365 天，到期需重新授權。Partner Key 和 Token 只存在此瀏覽器，不上傳至伺服器。
+  </div>
+</div>
+
+<div class="page" id="page-anomaly">
+  <h1 class="page-title">異常率追蹤</h1>
+  <p class="page-sub">追蹤商品錯誤、瑕疵與其他問題的發生率，分「登記日期」與「出貨日期」雙視角</p>
+
+  <!-- 雙欄輸入 -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem;margin-bottom:1rem;">
+
+    <!-- 左:登記日期 -->
+    <div style="background:#fff;border:.5px solid rgba(0,0,0,.11);border-radius:12px;padding:1.25rem;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5rem;flex-wrap:wrap;gap:8px;">
+        <h3 style="margin:0;font-size:16px;font-weight:500;">登記日期<span style="font-size:11px;color:#888780;font-weight:400;margin-left:6px;">（週為單位）</span></h3>
+        <div style="display:flex;gap:5px;">
+          <button class="bsm" onclick="changeAnomRegWeek(-1)" style="padding:3px 8px;font-size:11px;">←</button>
+          <button class="bsm" onclick="changeAnomRegWeek(0)" style="padding:3px 8px;font-size:11px;">本週</button>
+          <button class="bsm" onclick="changeAnomRegWeek(1)" style="padding:3px 8px;font-size:11px;">→</button>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#185FA5;font-weight:500;margin-bottom:2px;"><span id="anom-reg-label">—</span> <span id="anom-reg-status" style="font-size:10px;color:#aaa;margin-left:6px;font-weight:400;"></span></div>
+      <div style="font-size:11px;color:#aaa;margin-bottom:1rem;" id="anom-reg-range">—</div>
+
+      <div class="ig"><label>本週總出貨量</label><input type="number" id="anom-reg-total" min="0" oninput="calcAnom()"></div>
+      <div class="ig"><label>商品錯誤數</label><input type="number" id="anom-reg-err" min="0" oninput="calcAnom()"></div>
+      <div class="ig"><label>商品瑕疵數</label><input type="number" id="anom-reg-def" min="0" oninput="calcAnom()"></div>
+      <div class="ig"><label>其他問題數</label><input type="number" id="anom-reg-oth" min="0" oninput="calcAnom()"></div>
+
+      <div style="margin-top:1rem;padding-top:0.75rem;border-top:.5px solid rgba(0,0,0,.08);">
+        <div class="krow"><span>商品錯誤率</span><span id="anom-reg-err-pct" style="font-weight:500;color:#993556;">—</span></div>
+        <div class="krow"><span>商品瑕疵率</span><span id="anom-reg-def-pct" style="font-weight:500;color:#BA7517;">—</span></div>
+        <div class="krow"><span>其他問題率</span><span id="anom-reg-oth-pct" style="font-weight:500;color:#534AB7;">—</span></div>
+      </div>
+
+      <div style="margin-top:1rem;display:flex;justify-content:flex-end;">
+        <button class="bp bsm" onclick="saveAnomReg()" id="anom-save-reg-btn" style="font-size:12px;">儲存登記資料 →</button>
+      </div>
+    </div>
+
+    <!-- 右:出貨日期 -->
+    <div style="background:#fff;border:.5px solid rgba(0,0,0,.11);border-radius:12px;padding:1.25rem;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5rem;flex-wrap:wrap;gap:8px;">
+        <h3 style="margin:0;font-size:16px;font-weight:500;">出貨日期<span style="font-size:11px;color:#888780;font-weight:400;margin-left:6px;">（半月累計）</span></h3>
+        <div style="display:flex;gap:5px;">
+          <button class="bsm" onclick="changeAnomShipHM(-1)" style="padding:3px 8px;font-size:11px;">←</button>
+          <button class="bsm" onclick="changeAnomShipHM(0)" style="padding:3px 8px;font-size:11px;">本期</button>
+          <button class="bsm" onclick="changeAnomShipHM(1)" style="padding:3px 8px;font-size:11px;">→</button>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#185FA5;font-weight:500;margin-bottom:2px;"><span id="anom-ship-label">—</span> <span id="anom-ship-status" style="font-size:10px;color:#aaa;margin-left:6px;font-weight:400;"></span></div>
+      <div style="font-size:11px;color:#aaa;margin-bottom:1rem;" id="anom-ship-range">—</div>
+
+      <div class="ig"><label>半月累計總出貨量</label><input type="number" id="anom-ship-total" min="0" oninput="calcAnom()"></div>
+      <div class="ig"><label>商品錯誤數（累計）</label><input type="number" id="anom-ship-err" min="0" oninput="calcAnom()"></div>
+      <div class="ig"><label>商品瑕疵數（累計）</label><input type="number" id="anom-ship-def" min="0" oninput="calcAnom()"></div>
+      <div class="ig"><label>其他問題數（累計）</label><input type="number" id="anom-ship-oth" min="0" oninput="calcAnom()"></div>
+
+      <div style="margin-top:1rem;padding-top:0.75rem;border-top:.5px solid rgba(0,0,0,.08);">
+        <div class="krow"><span>商品錯誤率</span><span id="anom-ship-err-pct" style="font-weight:500;color:#993556;">—</span></div>
+        <div class="krow"><span>商品瑕疵率</span><span id="anom-ship-def-pct" style="font-weight:500;color:#BA7517;">—</span></div>
+        <div class="krow"><span>其他問題率</span><span id="anom-ship-oth-pct" style="font-weight:500;color:#534AB7;">—</span></div>
+      </div>
+
+      <div style="margin-top:1rem;display:flex;justify-content:flex-end;">
+        <button class="bp bsm" onclick="saveAnomShip()" id="anom-save-ship-btn" style="font-size:12px;">儲存出貨資料 →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 歷週趨勢圖 -->
+  <p class="sec">歷週異常率趨勢</p>
+  <div id="anom-trend-empty" class="empty" style="display:none;">尚無儲存記錄，請先填寫並儲存本週資料</div>
+  <div id="anom-trend-wrap">
+
+    <!-- 登記日期趨勢圖 -->
+    <div class="card" style="margin-bottom:1rem;">
+      <div style="font-size:13px;font-weight:500;margin-bottom:6px;">登記日期（週為單位）</div>
+      <div class="chart-wrap" style="height:220px;">
+        <canvas id="anomRegChart"></canvas>
+      </div>
+      <div id="anom-reg-legend" style="display:flex;justify-content:center;gap:14px;font-size:11px;color:#6b6b66;margin-top:6px;flex-wrap:wrap;">
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:18px;height:3px;background:#993556;border-radius:2px;"></span>商品錯誤率</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:18px;height:3px;background:#BA7517;border-radius:2px;"></span>商品瑕疵率</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:18px;height:3px;background:#534AB7;border-radius:2px;"></span>其他問題率</span>
+      </div>
+    </div>
+
+    <!-- 出貨日期趨勢圖 -->
+    <div class="card" style="margin-bottom:1rem;">
+      <div style="font-size:13px;font-weight:500;margin-bottom:6px;">出貨日期（半月累計）</div>
+      <div class="chart-wrap" style="height:220px;">
+        <canvas id="anomShipChart"></canvas>
+      </div>
+      <div style="display:flex;justify-content:center;gap:14px;font-size:11px;color:#6b6b66;margin-top:6px;flex-wrap:wrap;">
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:18px;height:3px;background:#993556;border-radius:2px;"></span>商品錯誤率</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:18px;height:3px;background:#BA7517;border-radius:2px;"></span>商品瑕疵率</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:18px;height:3px;background:#534AB7;border-radius:2px;"></span>其他問題率</span>
+      </div>
+    </div>
+
+    <!-- 歷週記錄表 -->
+    <p class="sec" style="margin-top:1.5rem;">歷週記錄明細</p>
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>區間</th>
+            <th>類別</th>
+            <th>總量</th>
+            <th>錯誤率</th>
+            <th>瑕疵率</th>
+            <th>其他</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="anom-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════ Storage ══════
+// Sync readers - read from window cache populated by Firebase
+const LD   = () => window._dailyCache || [];
+const LH   = () => window._histCache  || [];
+const LSat = () => window._satCache;
+
+const ACCTS = ['A','B','C','D','G'];
+
+// ══════ 國定假日工具 ══════
+// 內建台灣國定假日清單(含補假調整),2025-2026
+const BUILT_IN_HOLIDAYS = [
+  // ── 2025 ──
+  '2025-01-01', // 元旦
+  '2025-01-27','2025-01-28','2025-01-29','2025-01-30','2025-01-31', // 春節(小年夜+除夕+初一~初三)
+  '2025-02-28', // 和平紀念日(五)
+  '2025-04-03','2025-04-04', // 兒童節補假+兒童節/清明
+  '2025-05-01', // 勞動節
+  '2025-05-30', // 端午補假(5/31週六→補休5/30週五)
+  '2025-09-29', // 教師節補假(9/28週日→補休9/29週一)
+  '2025-10-06', // 中秋(週一)
+  '2025-10-10', // 國慶(週五)
+  '2025-10-24', // 光復節補假(10/25週六→補休10/24週五)
+  // ── 2026 ──
+  '2026-01-01', // 元旦
+  '2026-02-16','2026-02-17','2026-02-18','2026-02-19','2026-02-20', // 春節
+  '2026-02-27','2026-02-28', // 和平紀念日(2/28週六→補休2/27週五)
+  '2026-04-03','2026-04-06', // 兒童節補假+清明補假
+  '2026-05-01', // 勞動節
+  '2026-06-19', // 端午(週五)
+  '2026-09-25', // 中秋(週五)
+  '2026-09-28', // 教師節(週一)
+  '2026-10-09', // 國慶補假(10/10週六→補休10/9週五)
+  '2026-10-26', // 光復節補假(10/25週日→補休10/26週一)
+  '2026-12-25', // 行憲紀念日(週五)
+];
+
+function getCustomHolidays(){
+  try {
+    const s = localStorage.getItem('customHolidays');
+    return s ? JSON.parse(s) : [];
+  } catch(e) { return []; }
+}
+function setCustomHolidays(arr){
+  try { localStorage.setItem('customHolidays', JSON.stringify(arr)); } catch(e){}
+}
+function getAllHolidays(){
+  return new Set([...BUILT_IN_HOLIDAYS, ...getCustomHolidays()]);
+}
+// 是否為「假日」:週六、週日、或國定假日
+function isHoliday(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const day = d.getDay();
+  if(day===0 || day===6) return true; // Sun or Sat
+  return getAllHolidays().has(dateStr);
+}
+// 取「只看平日」全域狀態 (兩頁共用,但獨立記憶)
+function getWeekdayOnly(scope){
+  try { return localStorage.getItem('weekdayOnly_'+scope)==='1'; } catch(e){return false;}
+}
+function setWeekdayOnly(scope, v){
+  try { localStorage.setItem('weekdayOnly_'+scope, v?'1':'0'); } catch(e){}
+}
+
+// ══════ Week helpers ══════
+let weekOffset = 0;
+function getMondayOf(offset){
+  const now=new Date(); const day=now.getDay();
+  const mon=new Date(now);
+  mon.setDate(now.getDate()-(day===0?6:day-1)+offset*7);
+  mon.setHours(0,0,0,0); return mon;
+}
+function toStr(d){
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,'0');
+  const day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function weekKey(mon){
+  const y=mon.getFullYear();
+  const jan1=new Date(y,0,1);
+  const wk=Math.ceil(((mon-jan1)/86400000+jan1.getDay()+1)/7);
+  return `${y}-W${String(wk).padStart(2,'0')}`;
+}
+function weekLabel(mon){
+  const sun=new Date(mon); sun.setDate(mon.getDate()+6);
+  const f=d=>`${d.getMonth()+1}/${d.getDate()}`;
+  return `${f(mon)} ～ ${f(sun)}`;
+}
+
+// ══════ Nav ══════
+function showPage(name,btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  btn.classList.add('active');
+  if(name==='reply'){renderReply();}
+  if(name==='order'){renderOrder();}
+  if(name==='satisfy'){loadSatInputs();calcSat();}
+  if(name==='weekly'){populateWeekSel();renderKPI();}
+  if(name==='quarter'){setQMode(currentQMode);}
+  if(name==='platform'){setPMode(currentPMode);}
+  if(name==='trend'){renderTrend();}
+  if(name==='anomaly'){loadAnomInputs(); renderAnomTrend();}
+}
+
+// ══════ PAGE 1&2: Reply & Order ══════
+window.weekOffsetReply=0;
+window.weekOffsetOrder=0;
+
+function getVal(id){const el=document.getElementById(id);if(!el)return null;const v=parseFloat(el.value);return isNaN(v)?null:v;}
+
+function initDate(id){
+  const el=document.getElementById(id);
+  if(el&&!el.value) el.value=toStr(new Date());
+}
+
+function getWeekRecs(offset){
+  const mon=getMondayOf(offset);
+  const sun=new Date(mon); sun.setDate(mon.getDate()+6);
+  const monS=toStr(mon), sunS=toStr(sun);
+  return LD().filter(r=>r.date>=monS&&r.date<=sunS);
+}
+
+function acctAvg(week,acct){
+  const vals=week.map(r=>r['rr'+acct]).filter(v=>v!==null);
+  return vals.length>0?(vals.reduce((s,v)=>s+v,0)/vals.length):null;
+}
+
+// ── Reply Rate page ──
+function updateReplyPreview(){
+  const rrVals=ACCTS.map(a=>getVal('rr-'+a)).filter(v=>v!==null);
+  const avg=rrVals.length>0?(rrVals.reduce((s,v)=>s+v,0)/rrVals.length):null;
+  document.getElementById('prev-reply-avg').textContent=avg!==null?avg.toFixed(2)+'%':'—';
+}
+
+async function saveReplyRecord(){
+  const date=document.getElementById('d-date').value;
+  if(!date){alert('請選擇日期');return;}
+  const rrA=getVal('rr-A'),rrB=getVal('rr-B'),rrC=getVal('rr-C'),rrD=getVal('rr-D'),rrG=getVal('rr-G');
+  if(rrA===null&&rrB===null&&rrC===null&&rrD===null&&rrG===null){alert('請至少輸入一個帳號的回覆率');return;}
+  const existing=window._dailyCache.find(r=>r.date===date)||{date,repA:0,repB:0,repC:0,repD:0,repG:0,buyA:0,buyB:0,buyC:0,buyD:0,buyG:0,salA:0,salB:0,salC:0,salD:0,salG:0};
+  const rec={...existing,date,rrA,rrB,rrC,rrD,rrG};
+  showSaving(true);
+  await window.fbSetDaily(rec);
+  await window.loadAllData();
+  showSaving(false);
+  console.log('存檔後 cache 筆數:', window._dailyCache.length);
+  console.log('目前週offset:', window.weekOffsetReply);
+  const mon=getMondayOf(window.weekOffsetReply);
+  const sun=new Date(mon); sun.setDate(mon.getDate()+6);
+  console.log('顯示週範圍:', toStr(mon), '~', toStr(sun));
+  console.log('輸入的日期:', date, '在範圍內?', date>=toStr(mon)&&date<=toStr(sun));
+  ['rr-A','rr-B','rr-C','rr-D','rr-G'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('prev-reply-avg').textContent='—';
+  renderReply();
+}
+
+async function deleteReplyRecord(date){
+  if(!confirm('確定刪除 '+date+' 的回覆率記錄？'))return;
+  const r=window._dailyCache.find(rec=>rec.date===date);
+  if(!r)return;
+  showSaving(true);
+  if((r.repA||0)+(r.repB||0)+(r.repC||0)+(r.repD||0)+(r.repG||0)>0){
+    await window.fbSetDaily({...r,rrA:null,rrB:null,rrC:null,rrD:null,rrG:null});
+  } else {
+    await window.fbDeleteDaily(date);
+  }
+  await window.loadAllData();
+  showSaving(false);
+  renderReply();
+}
+
+function renderReply(){
+  initDate('d-date');
+  const mon=getMondayOf(window.weekOffsetReply);
+  document.getElementById('reply-week-label').textContent=weekLabel(mon);
+  const week=getWeekRecs(window.weekOffsetReply);
+  week.sort((a,b)=>a.date.localeCompare(b.date));
+  ACCTS.forEach(a=>{
+    const avg=acctAvg(week,a);
+    document.getElementById('sum-r'+a).textContent=avg!==null?avg.toFixed(2)+'%':'—';
+  });
+  const avgs=ACCTS.map(a=>acctAvg(week,a)).filter(v=>v!==null);
+  const overall=avgs.length>0?(avgs.reduce((s,v)=>s+v,0)/avgs.length):null;
+  document.getElementById('sum-reply-avg').textContent=overall!==null?overall.toFixed(2)+'%':'—';
+  const tbody=document.getElementById('reply-tbody');
+  const empty=document.getElementById('reply-empty');
+  const hasData=week.some(r=>ACCTS.some(a=>r['rr'+a]!==null&&r['rr'+a]!==undefined));
+  if(!hasData){tbody.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+  const fmtR=v=>v!==null&&v!==undefined?v.toFixed(2)+'%':'—';
+  tbody.innerHTML=week.filter(r=>ACCTS.some(a=>r['rr'+a]!==null&&r['rr'+a]!==undefined)).map(r=>{
+    const vals=ACCTS.map(a=>r['rr'+a]).filter(v=>v!==null&&v!==undefined);
+    const avg=vals.length>0?(vals.reduce((s,v)=>s+v,0)/vals.length):null;
+    return`<tr>
+      <td style="font-weight:500">${r.date}</td>
+      ${ACCTS.map(a=>`<td>${fmtR(r['rr'+a])}</td>`).join('')}
+      <td style="font-weight:500">${avg!==null?avg.toFixed(2)+'%':'—'}</td>
+      <td><button class="del-btn" onclick="deleteReplyRecord('${r.date}')">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Order Rate page ──
+function updateOrderPreview(){
+  let totRep=0,totBuy=0;
+  ACCTS.forEach(a=>{
+    const rep=getVal('d-rep'+a)||0;
+    const buy=getVal('d-buy'+a)||0;
+    totRep+=rep; totBuy+=buy;
+    document.getElementById('prev-or'+a).textContent=rep>0?(buy/rep*100).toFixed(2)+'%':'—';
+  });
+  document.getElementById('prev-order-total').textContent=totRep>0?(totBuy/totRep*100).toFixed(2)+'%':'—';
+}
+
+async function saveOrderRecord(){
+  const date=document.getElementById('d-date2').value;
+  if(!date){alert('請選擇日期');return;}
+  const repA=getVal('d-repA')||0,repB=getVal('d-repB')||0,repC=getVal('d-repC')||0,repD=getVal('d-repD')||0,repG=getVal('d-repG')||0;
+  const buyA=getVal('d-buyA')||0,buyB=getVal('d-buyB')||0,buyC=getVal('d-buyC')||0,buyD=getVal('d-buyD')||0,buyG=getVal('d-buyG')||0;
+  const salA=getVal('d-salA')||0,salB=getVal('d-salB')||0,salC=getVal('d-salC')||0,salD=getVal('d-salD')||0,salG=getVal('d-salG')||0;
+  if((repA+repB+repC+repD+repG)===0&&(salA+salB+salC+salD+salG)===0){alert('請至少輸入一個帳號的數字');return;}
+  const existing=window._dailyCache.find(r=>r.date===date)||{date,rrA:null,rrB:null,rrC:null,rrD:null,rrG:null};
+  const rec={...existing,date,repA,repB,repC,repD,repG,buyA,buyB,buyC,buyD,buyG,salA,salB,salC,salD,salG};
+  showSaving(true);
+  await window.fbSetDaily(rec);
+  await window.loadAllData();
+  showSaving(false);
+  ['d-repA','d-repB','d-repC','d-repD','d-repG','d-buyA','d-buyB','d-buyC','d-buyD','d-buyG','d-salA','d-salB','d-salC','d-salD','d-salG'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('prev-order-total').textContent='—';
+  ACCTS.forEach(a=>document.getElementById('prev-or'+a).textContent='—');
+  renderOrder();
+}
+
+async function deleteOrderRecord(date){
+  if(!confirm('確定刪除 '+date+' 的轉單率記錄？'))return;
+  const r=window._dailyCache.find(rec=>rec.date===date);
+  if(!r)return;
+  showSaving(true);
+  if(r.rrA!==null||r.rrB!==null||r.rrC!==null||r.rrD!==null){
+    await window.fbSetDaily({...r,repA:0,repB:0,repC:0,repD:0,buyA:0,buyB:0,buyC:0,buyD:0,salA:0,salB:0,salC:0,salD:0});
+  } else {
+    await window.fbDeleteDaily(date);
+  }
+  await window.loadAllData();
+  showSaving(false);
+  renderOrder();
+}
+
+function toggleOrderWeekday(){
+  const cb = document.getElementById('order-weekday-only');
+  setWeekdayOnly('order', cb.checked);
+  renderOrder();
+}
+
+function renderOrder(){
+  initDate('d-date2');
+  const mon=getMondayOf(window.weekOffsetOrder);
+  document.getElementById('order-week-label').textContent=weekLabel(mon);
+  const week=getWeekRecs(window.weekOffsetOrder);
+  week.sort((a,b)=>a.date.localeCompare(b.date));
+
+  // 平日切換狀態同步
+  const cb = document.getElementById('order-weekday-only');
+  if(cb) cb.checked = getWeekdayOnly('order');
+  const weekdayOnly = getWeekdayOnly('order');
+
+  // 分平日 / 假日
+  const weekWD = week.filter(r => !isHoliday(r.date));
+  const weekHD = week.filter(r => isHoliday(r.date));
+  const sumSource = weekdayOnly ? weekWD : week;
+
+  const totRep=sumSource.reduce((s,r)=>s+(r.repA||0)+(r.repB||0)+(r.repC||0)+(r.repD||0),0);
+  const totBuy=sumSource.reduce((s,r)=>s+(r.buyA||0)+(r.buyB||0)+(r.buyC||0)+(r.buyD||0),0);
+  document.getElementById('sum-order-rate').textContent=totRep>0?(totBuy/totRep*100).toFixed(2)+'%':'—';
+  const totSales=sumSource.reduce((s,r)=>s+(r.salA||0)+(r.salB||0)+(r.salC||0)+(r.salD||0),0);
+  document.getElementById('sum-sales').textContent=totSales>0?'$'+totSales.toLocaleString():'—';
+
+  // 摘要標籤
+  document.getElementById('sum-label-rate').textContent  = weekdayOnly ? '本週平日累計轉單率：' : '本週累計轉單率：';
+  document.getElementById('sum-label-sales').textContent = weekdayOnly ? '本週平日銷售額：' : '本週總銷售額：';
+
+  // 假日資訊區
+  const hInfo = document.getElementById('sum-holiday-info');
+  if(weekdayOnly && weekHD.length>0){
+    const hRep = weekHD.reduce((s,r)=>s+(r.repA||0)+(r.repB||0)+(r.repC||0)+(r.repD||0),0);
+    const hBuy = weekHD.reduce((s,r)=>s+(r.buyA||0)+(r.buyB||0)+(r.buyC||0)+(r.buyD||0),0);
+    const hSal = weekHD.reduce((s,r)=>s+(r.salA||0)+(r.salB||0)+(r.salC||0)+(r.salD||0),0);
+    const hRate = hRep>0 ? (hBuy/hRep*100).toFixed(2)+'%' : '—';
+    hInfo.style.display = 'block';
+    hInfo.innerHTML = `假日獨立統計（${weekHD.length} 天）｜轉單率 ${hRate}｜銷售額 ${hSal>0?'$'+hSal.toLocaleString():'—'}`;
+  } else if(weekdayOnly && weekHD.length===0){
+    hInfo.style.display = 'block';
+    hInfo.innerHTML = '本週無假日資料可排除';
+  } else {
+    hInfo.style.display = 'none';
+  }
+
+  const tbody=document.getElementById('order-tbody');
+  const empty=document.getElementById('order-empty');
+  const hasData=week.some(r=>(r.repA||0)+(r.repB||0)+(r.repC||0)+(r.repD||0)>0||(r.salA||0)+(r.salB||0)+(r.salC||0)+(r.salD||0)>0);
+  if(!hasData){tbody.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+  const fOR=(buy,rep)=>rep>0?(buy/rep*100).toFixed(2)+'%':'—';
+  tbody.innerHTML=week.filter(r=>(r.repA||0)+(r.repB||0)+(r.repC||0)+(r.repD||0)>0||(r.salA||0)+(r.salB||0)>(r.salC||0)+(r.salD||0)>0).map(r=>{
+    const dRep=(r.repA||0)+(r.repB||0)+(r.repC||0)+(r.repD||0);
+    const dBuy=(r.buyA||0)+(r.buyB||0)+(r.buyC||0)+(r.buyD||0);
+    const dSal=(r.salA||0)+(r.salB||0)+(r.salC||0)+(r.salD||0);
+    const hasSales = dSal>0;
+    const holiday = isHoliday(r.date);
+    const rowBg = (weekdayOnly && holiday) ? 'background:#faf6ed;color:#aaa;' : '';
+    const dateTag = holiday ? '<span style="background:#FFF3E0;color:#8a4a00;font-size:10px;padding:1px 5px;border-radius:4px;margin-left:6px;">假日</span>' : '';
+    const salesDisplay = hasSales
+      ? `<span style="color:#185FA5;cursor:pointer;user-select:none;" title="點擊展開各帳銷售額">$${dSal.toLocaleString()} <span class="sal-arrow" style="font-size:10px;color:#888780;">▸</span></span>`
+      : '—';
+    const detailRow = hasSales ? `<tr class="sal-detail" id="sal-detail-${r.date}" style="display:none;background:#fafaf7;">
+      <td colspan="16" style="padding:10px 16px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <span style="font-size:11px;color:#888780;margin-right:4px;">各帳銷售額：</span>
+          <span style="background:#fff;border:.5px solid rgba(0,0,0,.08);border-radius:8px;padding:6px 10px;font-size:12px;"><span class="acct-badge acc-A" style="margin:0 6px 0 0;font-size:10px;">A</span>$${(r.salA||0).toLocaleString()}</span>
+          <span style="background:#fff;border:.5px solid rgba(0,0,0,.08);border-radius:8px;padding:6px 10px;font-size:12px;"><span class="acct-badge acc-B" style="margin:0 6px 0 0;font-size:10px;">B</span>$${(r.salB||0).toLocaleString()}</span>
+          <span style="background:#fff;border:.5px solid rgba(0,0,0,.08);border-radius:8px;padding:6px 10px;font-size:12px;"><span class="acct-badge acc-C" style="margin:0 6px 0 0;font-size:10px;">C</span>$${(r.salC||0).toLocaleString()}</span>
+          <span style="background:#fff;border:.5px solid rgba(0,0,0,.08);border-radius:8px;padding:6px 10px;font-size:12px;"><span class="acct-badge acc-D" style="margin:0 6px 0 0;font-size:10px;">D</span>$${(r.salD||0).toLocaleString()}</span>
+        </div>
+      </td>
+    </tr>` : '';
+    return`<tr${hasSales?` style="cursor:pointer;${rowBg}" onclick="toggleSalDetail('${r.date}',event)"`:` style="${rowBg}"`}>
+      <td style="font-weight:500">${r.date}${dateTag}</td>
+      <td>${r.repA||0}</td><td>${r.buyA||0}</td><td>${fOR(r.buyA,r.repA)}</td>
+      <td>${r.repB||0}</td><td>${r.buyB||0}</td><td>${fOR(r.buyB,r.repB)}</td>
+      <td>${r.repC||0}</td><td>${r.buyC||0}</td><td>${fOR(r.buyC,r.repC)}</td>
+      <td>${r.repD||0}</td><td>${r.buyD||0}</td><td>${fOR(r.buyD,r.repD)}</td>
+      <td style="font-weight:500">${fOR(dBuy,dRep)}</td>
+      <td>${salesDisplay}</td>
+      <td><button class="del-btn" onclick="event.stopPropagation();deleteOrderRecord('${r.date}')">✕</button></td>
+    </tr>${detailRow}`;
+  }).join('');
+}
+
+function toggleSalDetail(date, ev){
+  if(ev) ev.stopPropagation();
+  const row = document.getElementById('sal-detail-'+date);
+  if(!row) return;
+  const isOpen = row.style.display !== 'none';
+  row.style.display = isOpen ? 'none' : 'table-row';
+  // toggle arrow
+  const triggerRow = row.previousElementSibling;
+  if(triggerRow){
+    const arrow = triggerRow.querySelector('.sal-arrow');
+    if(arrow) arrow.textContent = isOpen ? '▸' : '▾';
+  }
+}
+
+function changeWeek(page,target){
+  if(page==='reply') window.weekOffsetReply=(target===0)?0:window.weekOffsetReply+target;
+  if(page==='order') window.weekOffsetOrder=(target===0)?0:window.weekOffsetOrder+target;
+  if(page==='reply') renderReply();
+  if(page==='order') renderOrder();
+}
+
+// ══════ PAGE 2: Satisfaction ══════
+let satWeekOffset = 0;
+
+// 取得指定週次的快照(若存在);否則為 null
+function getSatSnapshot(monStr){
+  const hist = window._satHistCache || [];
+  return hist.find(h=>h.monStr===monStr) || null;
+}
+
+// 取得「上一個有快照」的記錄(嚴格早於指定 monStr)
+function getPrevSatSnapshot(monStr){
+  const hist = (window._satHistCache || []).filter(h=>h.monStr<monStr);
+  if(hist.length===0) return null;
+  return hist[hist.length-1]; // already sorted ascending
+}
+
+function loadSatInputs(){
+  const mon = getMondayOf(satWeekOffset);
+  const monStr = toStr(mon);
+  document.getElementById('sat-week-label').textContent = weekLabel(mon);
+
+  // 決定要載入哪一份資料
+  const snap = getSatSnapshot(monStr);
+  let dataSource;
+  let statusText = '';
+  if(snap){
+    dataSource = snap;
+    statusText = '已儲存快照';
+  } else if(satWeekOffset === 0){
+    // 本週尚未儲存 → 帶入最近一次快照(若有)作為預設(因為是累積數字)
+    const prev = getPrevSatSnapshot(monStr);
+    if(prev){
+      dataSource = prev;
+      statusText = '尚未儲存本週（預填上次數字）';
+    } else if(window._satCache){
+      dataSource = window._satCache;
+      statusText = '尚未儲存本週';
+    } else {
+      dataSource = null;
+      statusText = '尚未儲存本週';
+    }
+  } else {
+    dataSource = null;
+    statusText = '此週無快照';
+  }
+
+  document.getElementById('sat-week-status').textContent = statusText ? '・'+statusText : '';
+
+  // 填入或清空輸入框
+  ACCTS.forEach(a=>{
+    for(let s=1;s<=5;s++){
+      const el = document.getElementById('s'+a+s);
+      if(!el) continue;
+      if(dataSource && dataSource[a] && dataSource[a][s]!=null){
+        el.value = dataSource[a][s];
+      } else {
+        el.value = '';
+      }
+    }
+  });
+
+  // 按鈕文字
+  const btn = document.getElementById('sat-save-btn');
+  if(btn){
+    btn.textContent = snap ? '更新此週快照 →' : '儲存本週滿意度 →';
+  }
+
+  calcSat();
+}
+
+function changeSatWeek(target){
+  satWeekOffset = (target===0) ? 0 : satWeekOffset + target;
+  loadSatInputs();
+}
+
+function getSatVals(acct){
+  const stars={};
+  for(let s=1;s<=5;s++) stars[s]=parseInt(document.getElementById('s'+acct+s).value)||0;
+  const total=Object.values(stars).reduce((a,b)=>a+b,0);
+  const pos=stars[4]+stars[5];
+  const pct=total>0?pos/total*100:null;
+  return{stars,total,pos,pct};
+}
+
+function calcSat(){
+  let grandTotal=0,grandPos=0;
+  const currentByAcct = {};
+  ACCTS.forEach(a=>{
+    const v = getSatVals(a);
+    currentByAcct[a] = v;
+    document.getElementById('s'+a+'-total').textContent = v.total;
+    document.getElementById('s'+a+'-pct').textContent = v.pct!==null?v.pct.toFixed(2)+'%':'—';
+    grandTotal+=v.total; grandPos+=v.pos;
+  });
+  const overall=grandTotal>0?(grandPos/grandTotal*100):null;
+  document.getElementById('sat-overall').textContent=overall!==null?overall.toFixed(2)+'%':'—';
+  document.getElementById('sat-grand-total').textContent=grandTotal;
+  document.getElementById('sat-grand-pos').textContent=grandPos;
+
+  // ── 本週新增評價(差值)────
+  renderSatDelta(currentByAcct);
+
+  // also update KPI page if visible
+  if(document.getElementById('page-weekly').classList.contains('active')) renderKPI();
+}
+
+function renderSatDelta(currentByAcct){
+  const card = document.getElementById('sat-delta-card');
+  const content = document.getElementById('sat-delta-content');
+  if(!card || !content) return;
+
+  const mon = getMondayOf(satWeekOffset);
+  const monStr = toStr(mon);
+  const prev = getPrevSatSnapshot(monStr);
+
+  if(!prev){
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'block';
+
+  // 計算每帳差值
+  let totalAddAll=0, totalPosAdd=0;
+  const acctHtml = ACCTS.map(a=>{
+    const cur = currentByAcct[a];
+    const prevA = prev[a] || {};
+    let addTotal = 0, addPos = 0;
+    const starDeltas = [];
+    for(let s=1;s<=5;s++){
+      const c = cur.stars[s] || 0;
+      const p = prevA[s] || 0;
+      const d = c - p;
+      starDeltas.push({s,d});
+      addTotal += d;
+      if(s>=4) addPos += d;
+    }
+    totalAddAll += addTotal;
+    totalPosAdd += addPos;
+    const addPct = addTotal>0 ? (addPos/addTotal*100) : null;
+
+    const starStr = starDeltas
+      .filter(x=>x.d!==0)
+      .map(x=>{
+        const sign = x.d>0?'+':'';
+        const color = x.s>=4 ? '#3B6D11' : (x.s<=2 ? '#993556' : '#888780');
+        return `<span style="color:${color};font-size:11px;">${x.s}★ ${sign}${x.d}</span>`;
+      }).join('　');
+
+    return `<div style="border-bottom:.5px solid rgba(0,0,0,.06);padding:8px 0;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:180px;">
+        <span class="acct-badge acc-${a}" style="margin:0;">帳號 ${a}</span>
+        <span style="font-size:12px;color:#888780;">新增 ${addTotal} 則</span>
+      </div>
+      <div style="flex:2;min-width:160px;">${starStr || '<span style="font-size:11px;color:#aaa;">無變化</span>'}</div>
+      <div style="font-weight:500;color:${addPct!==null&&addPct>=99?'#3B6D11':(addPct!==null&&addPct<95?'#993556':'#185FA5')};font-size:14px;min-width:60px;text-align:right;">${addPct!==null?addPct.toFixed(2)+'%':'—'}</div>
+    </div>`;
+  }).join('');
+
+  const overallAddPct = totalAddAll>0 ? (totalPosAdd/totalAddAll*100) : null;
+
+  content.innerHTML = `
+    <div style="font-size:11px;color:#aaa;margin-bottom:8px;">對比基準：${prev.label || prev.monStr}</div>
+    ${acctHtml}
+    <div style="margin-top:12px;padding:10px 12px;background:#f5f4f0;border-radius:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <div>
+        <span style="font-size:12px;color:#6b6b66;">本週新增五帳總評價：</span>
+        <span style="font-weight:500;">${totalAddAll} 則</span>
+        <span style="font-size:11px;color:#aaa;margin-left:6px;">（4★+5★：${totalPosAdd} 則）</span>
+      </div>
+      <div>
+        <span style="font-size:12px;color:#6b6b66;">本週新增滿意度：</span>
+        <span style="font-size:18px;font-weight:500;color:${overallAddPct!==null&&overallAddPct>=99?'#3B6D11':(overallAddPct!==null&&overallAddPct<95?'#993556':'#185FA5')};">${overallAddPct!==null?overallAddPct.toFixed(2)+'%':'—'}</span>
+      </div>
+    </div>
+  `;
+}
+
+function getSatOverallPct(){
+  let grandTotal=0,grandPos=0;
+  ACCTS.forEach(a=>{const {total,pos}=getSatVals(a);grandTotal+=total;grandPos+=pos;});
+  return grandTotal>0?grandPos/grandTotal*100:null;
+}
+
+async function saveSatData(){
+  const obj={};
+  ACCTS.forEach(a=>{
+    obj[a]={};
+    for(let s=1;s<=5;s++) obj[a][s]=parseInt(document.getElementById('s'+a+s).value)||0;
+  });
+
+  const mon = getMondayOf(satWeekOffset);
+  const monStr = toStr(mon);
+  const wk = weekKey(mon);
+  const label = wk+'（'+weekLabel(mon)+'）';
+
+  showSaving(true);
+  // 保留原本「最新累積資料」(讓週KPI頁面照常運作)
+  // 只在當前週次或更新時才更新 _satCache(避免回看歷史週時被覆蓋)
+  if(satWeekOffset === 0){
+    await window.fbSetSat(obj);
+    window._satCache = obj;
+  }
+  // 同時儲存本週快照
+  const snapshot = {monStr, wk, label, ...obj};
+  await window.fbSetSatHist(snapshot);
+  // 重新整理快照快取
+  window._satHistCache = await window.fbGetSatHist();
+  showSaving(false);
+
+  // 重新載入畫面狀態
+  loadSatInputs();
+  alert('✅ 滿意度資料已儲存（含本週快照）！');
+}
+
+// ══════ PAGE 3: KPI ══════
+function clamp(v,mn,mx){return Math.min(Math.max(v,mn),mx);}
+
+function calcScores(replyPct,satPct,orderPct,retPct){
+  let s1=null,s2=null,s3=null,s4=null;
+  if(replyPct!==null) s1=clamp(replyPct,0,100);
+  if(satPct!==null){const d=99-satPct;s2=d>0?clamp(100-d*2.5,0,100):100;}
+  if(orderPct!==null) s3=clamp(100+(orderPct-13)*7.69,0,200);
+  if(retPct!==null) s4=clamp(retPct,0,100);
+  let w=0,parts=[];
+  if(s1!==null){const v=s1/100*15;w+=v;parts.push({n:'回覆率',v});}
+  if(s2!==null){const v=s2/100*15;w+=v;parts.push({n:'滿意度',v});}
+  if(s3!==null){const v=s3/100*15;w+=v;parts.push({n:'轉單率',v});}
+  if(s4!==null){const v=s4/100*10;w+=v;parts.push({n:'留任率',v});}
+  return{s1,s2,s3,s4,weighted:w,parts};
+}
+
+function pillCls(v){if(v===null)return'pn';if(v>=80)return'pg';if(v>=60)return'pa';return'pr';}
+function gradeOf(w){
+  const p=w/55*100;
+  if(p>=90)return['A','優秀'];if(p>=80)return['B','良好'];
+  if(p>=70)return['C','達標'];if(p>=60)return['D','待改善'];return['F','未達標'];
+}
+
+function populateWeekSel(){
+  const all=LD();
+  const keys=new Set();
+  all.forEach(r=>{
+    const d=new Date(r.date+'T00:00:00');const day=d.getDay();
+    const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
+    keys.add(toStr(mon));
+  });
+  keys.add(toStr(getMondayOf(0)));
+  const arr=Array.from(keys).sort().reverse();
+  const sel=document.getElementById('kpi-week-sel');
+  const prev=sel.value;
+  sel.innerHTML=arr.map(monStr=>{
+    const mon=new Date(monStr+'T00:00:00');
+    return`<option value="${monStr}">${weekKey(mon)}（${weekLabel(mon)}）</option>`;
+  }).join('');
+  if(arr.includes(prev))sel.value=prev;
+}
+
+function getWeekDataByMon(monStr){
+  const sun=new Date(monStr+'T00:00:00');sun.setDate(sun.getDate()+6);
+  return LD().filter(r=>r.date>=monStr&&r.date<=toStr(sun));
+}
+function getWeekRecords(offset){return getWeekRecs(offset);}
+
+function renderKPI(){
+  const monStr=document.getElementById('kpi-week-sel').value;
+  if(!monStr)return;
+  const week=getWeekDataByMon(monStr);
+
+  // reply rate: average of per-account averages
+  const acctAvgs=ACCTS.map(a=>{
+    const vals=week.map(r=>r['rr'+a]).filter(v=>v!==null);
+    return vals.length>0?(vals.reduce((s,v)=>s+v,0)/vals.length):null;
+  }).filter(v=>v!==null);
+  const replyPct=acctAvgs.length>0?(acctAvgs.reduce((s,v)=>s+v,0)/acctAvgs.length):null;
+
+  // order rate
+  const totRep=week.reduce((s,r)=>s+(r.repA||0)+(r.repB||0)+(r.repC||0)+(r.repD||0),0);
+  const totBuy=week.reduce((s,r)=>s+(r.buyA||0)+(r.buyB||0)+(r.buyC||0)+(r.buyD||0),0);
+  const orderPct=totRep>0?totBuy/totRep*100:null;
+
+  // satisfaction from inputs
+  const satPct=getSatOverallPct();
+
+  // retention
+  const tp=parseFloat(document.getElementById('kpi-total-ppl').value);
+  const qp=parseFloat(document.getElementById('kpi-quit-ppl').value);
+  const retPct=(!isNaN(tp)&&tp>0&&!isNaN(qp))?(tp-qp)/tp*100:null;
+  document.getElementById('kpi-ret-pct-preview').textContent=retPct!==null?retPct.toFixed(2)+'%':'—';
+
+  const r=calcScores(replyPct,satPct,orderPct,retPct);
+  const noData=week.length===0;
+  document.getElementById('kpi-no-data').style.display=noData?'block':'none';
+  document.getElementById('kpi-result-wrap').style.opacity=noData?'0.45':'1';
+
+  const set=(id,v)=>document.getElementById(id).textContent=v;
+  const pill=(id,v)=>{const el=document.getElementById(id);el.className='pill '+pillCls(v);el.textContent=v!==null?v.toFixed(2)+' 分':'—';};
+
+  set('kr-reply-pct',replyPct!==null?replyPct.toFixed(2)+'%':'無每日資料');
+  // per-account detail line
+  const detailParts=ACCTS.map((a,i)=>{const v=acctAvgs[i];return v!=null?`${a}:${v.toFixed(2)}%`:null;}).filter(Boolean);
+  set('kr-reply-detail',detailParts.length>0?detailParts.join('  '):'—');
+  set('kr-reply-ach',replyPct!==null?(replyPct/100*100).toFixed(1)+'%':'—');
+  pill('kr-reply-raw',r.s1);
+  set('kr-reply-w',r.s1!==null?(r.s1/100*15).toFixed(2)+' 分':'—');
+
+  set('kr-sat-pct',satPct!==null?satPct.toFixed(2)+'%':'請先至滿意度頁輸入');
+  set('kr-sat-ach',satPct!==null?(satPct/99*100).toFixed(1)+'%':'—');
+  pill('kr-sat-raw',r.s2);
+  set('kr-sat-w',r.s2!==null?(r.s2/100*15).toFixed(2)+' 分':'—');
+
+  set('kr-order-pct',orderPct!==null?orderPct.toFixed(2)+'%':'無每日資料');
+  set('kr-order-ach',orderPct!==null?(orderPct/13*100).toFixed(1)+'%':'—');
+  pill('kr-order-raw',r.s3);
+  set('kr-order-w',r.s3!==null?(r.s3/100*15).toFixed(2)+' 分':'—');
+
+  set('kr-ret-pct',retPct!==null?retPct.toFixed(2)+'%':'未輸入');
+  set('kr-ret-ach',retPct!==null?(retPct/100*100).toFixed(1)+'%':'—');
+  pill('kr-ret-raw',r.s4);
+  set('kr-ret-w',r.s4!==null?(r.s4/100*10).toFixed(2)+' 分':'—');
+
+  if(r.parts.length>0){
+    set('kpi-total',r.weighted.toFixed(2));
+    const[g,gl]=gradeOf(r.weighted);
+    set('kpi-grade',g);set('kpi-grade-lbl',gl);
+    document.getElementById('kpi-breakdown').innerHTML=r.parts.map(p=>`<span class="bdi">${p.n} ${p.v.toFixed(2)}分</span>`).join('');
+  }else{
+    set('kpi-total','—');set('kpi-grade','—');set('kpi-grade-lbl','');
+    document.getElementById('kpi-breakdown').innerHTML='';
+  }
+}
+
+async function saveWeeklyKPI(){
+  const monStr=document.getElementById('kpi-week-sel').value;
+  if(!monStr){alert('請選擇週次');return;}
+  const week=getWeekDataByMon(monStr);
+  const acctAvgs=ACCTS.map(a=>{
+    const vals=week.map(r=>r['rr'+a]).filter(v=>v!==null);
+    return vals.length>0?(vals.reduce((s,v)=>s+v,0)/vals.length):null;
+  }).filter(v=>v!==null);
+  const replyPct=acctAvgs.length>0?(acctAvgs.reduce((s,v)=>s+v,0)/acctAvgs.length):null;
+  const totRep=week.reduce((s,r)=>s+(r.repA||0)+(r.repB||0)+(r.repC||0)+(r.repD||0),0);
+  const totBuy=week.reduce((s,r)=>s+(r.buyA||0)+(r.buyB||0)+(r.buyC||0)+(r.buyD||0),0);
+  const orderPct=totRep>0?totBuy/totRep*100:null;
+  const satPct=getSatOverallPct();
+  const tp=parseFloat(document.getElementById('kpi-total-ppl').value);
+  const qp=parseFloat(document.getElementById('kpi-quit-ppl').value);
+  const retPct=(!isNaN(tp)&&tp>0&&!isNaN(qp))?(tp-qp)/tp*100:null;
+  const r=calcScores(replyPct,satPct,orderPct,retPct);
+  if(r.parts.length===0){alert('尚無任何指標數值，無法儲存');return;}
+  const mon=new Date(monStr+'T00:00:00');
+  const wk=weekKey(mon);
+  const label=wk+'（'+weekLabel(mon)+'）';
+  const entry={wk,monStr,label,s1:r.s1,s2:r.s2,s3:r.s3,s4:r.s4,weighted:r.weighted};
+  showSaving(true);
+  await window.fbSetHist(entry);
+  await window.loadAllData();
+  showSaving(false);
+  alert('✅ 本週KPI已儲存！');
+}
+
+// ══════ PAGE 4: Trend ══════
+let trendChart=null;
+
+function toggleTrendWeekday(){
+  const cb = document.getElementById('trend-weekday-only');
+  setWeekdayOnly('trend', cb.checked);
+  renderTrend();
+}
+
+// 對指定週次計算「平日轉單率」:撈該週 daily,過濾假日,算 平日總買家/平日總回覆
+function calcWeekdayOrderPctForWeek(monStr){
+  if(!monStr) return null;
+  const mon = new Date(monStr+'T00:00:00');
+  const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+  const sunStr = toStr(sun);
+  const dailyAll = (window._dailyCache || []).filter(r => r.date>=monStr && r.date<=sunStr);
+  const dailyWD = dailyAll.filter(r => !isHoliday(r.date));
+  if(dailyWD.length===0) return null;
+  const totRep = dailyWD.reduce((s,r)=>s+(r.repA||0)+(r.repB||0)+(r.repC||0)+(r.repD||0),0);
+  const totBuy = dailyWD.reduce((s,r)=>s+(r.buyA||0)+(r.buyB||0)+(r.buyC||0)+(r.buyD||0),0);
+  if(totRep===0) return null;
+  return +(totBuy/totRep*100).toFixed(2);
+}
+
+function renderTrend(){
+  const allArr=LH();
+  const arr=allArr.slice(-12); // 只顯示最近 12 週
+  const empty=document.getElementById('trend-empty');
+  const wrap=document.getElementById('trend-wrap');
+  if(arr.length===0){empty.style.display='block';wrap.style.display='none';return;}
+  empty.style.display='none';wrap.style.display='block';
+  const fmt=v=>v!==null?v.toFixed(2):'—';
+  document.getElementById('trend-tbody').innerHTML=arr.map((h,i)=>{
+    const globalIdx=allArr.length-arr.length+i;
+    const[g]=gradeOf(h.weighted);
+    return`<tr>
+      <td style="font-weight:500">${h.label}</td>
+      <td>${fmt(h.s1)}</td><td>${fmt(h.s2)}</td><td>${fmt(h.s3)}</td><td>${fmt(h.s4)}</td>
+      <td style="font-weight:500">${h.weighted.toFixed(2)}</td><td>${g}</td>
+      <td><button class="del-btn" onclick="deleteTrendRow(${globalIdx})">✕</button></td>
+    </tr>`;
+  }).join('');
+  const ctx=document.getElementById('trendChart');
+  if(trendChart)trendChart.destroy();
+
+  // 同步 checkbox 狀態
+  const cb = document.getElementById('trend-weekday-only');
+  if(cb) cb.checked = getWeekdayOnly('trend');
+  const showWeekday = getWeekdayOnly('trend');
+  document.getElementById('trend-legend-row').style.display = showWeekday ? 'flex' : 'none';
+
+  // 含假日(已儲存):從 s3 反推
+  const orderPcts = arr.map(h => h.s3!==null ? +(13 + (h.s3-100)/7.69).toFixed(2) : null);
+  // 平日轉單率:對每週重新計算
+  const weekdayPcts = showWeekday ? arr.map(h => calcWeekdayOrderPctForWeek(h.monStr)) : [];
+
+  // 計算 Y 軸範圍
+  const allValid = [...orderPcts, ...weekdayPcts].filter(v=>v!==null);
+  const dataMax = allValid.length>0 ? Math.max(...allValid) : 20;
+  const dataMin = allValid.length>0 ? Math.min(...allValid) : 5;
+  const yMax = 16;
+  const yMin = Math.max(0, Math.floor(dataMin-1));
+
+  // 目標線 plugin
+  const targetLinePlugin = {
+    id: 'targetLine',
+    afterDatasetsDraw(chart){
+      const {ctx, chartArea:{left,right}, scales:{y}} = chart;
+      const yPos = y.getPixelForValue(13);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(120,120,120,0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4,4]);
+      ctx.beginPath();
+      ctx.moveTo(left, yPos);
+      ctx.lineTo(right, yPos);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(80,80,80,0.85)';
+      ctx.font = '600 10px -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('目標 13%', left+4, yPos-2);
+      ctx.restore();
+    }
+  };
+
+  // 點上顯示數值 plugin (兩條線都顯示時,標籤錯開避免重疊)
+  const pointValuePlugin = {
+    id: 'pointValueLabel',
+    afterDatasetsDraw(chart){
+      const {ctx} = chart;
+      ctx.save();
+      ctx.font = '600 11px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+
+      chart.data.datasets.forEach((ds, dsIdx) => {
+        if(!chart.isDatasetVisible(dsIdx)) return;
+        const meta = chart.getDatasetMeta(dsIdx);
+        meta.data.forEach((point, idx)=>{
+          const v = ds.data[idx];
+          if(v===null || v===undefined) return;
+          const txt = v.toFixed(2)+'%';
+          const x = point.x;
+          // 第1條上方偏移22px，第2條下方偏移22px，確保不重疊
+          let y, baseline;
+          // dsIdx===0(含假日)標籤在下方，dsIdx===1(平日)標籤在上方
+          if(dsIdx===0){
+            y = point.y + 32;
+            baseline = 'top';
+          } else {
+            y = point.y - 32;
+            baseline = 'bottom';
+          }
+          ctx.textBaseline = baseline;
+          // 白色背景框
+          const tw = ctx.measureText(txt).width;
+          const bx = x - tw/2 - 4;
+          const by = baseline==='bottom' ? y - 14 : y;
+          ctx.fillStyle = 'rgba(255,255,255,0.95)';
+          ctx.fillRect(bx, by, tw+8, 15);
+          // 文字（顏色固定對應自己的線）
+          ctx.fillStyle = ds.borderColor;
+          ctx.fillText(txt, x, y);
+        });
+      });
+      ctx.restore();
+    }
+  };
+
+  // 兩條線的設定
+  const datasets = [
+    {
+      label:'含假日轉單率',
+      data:orderPcts,
+      borderColor:'#1B6B7A',  // 海青色
+      backgroundColor:'rgba(27,107,122,0.06)',
+      tension:0.3,
+      borderWidth:2.5,
+      pointRadius:5,
+      pointBackgroundColor:'#1B6B7A',
+      fill: !showWeekday  // 單線時填色;兩條線時不填色比較乾淨
+    }
+  ];
+  if(showWeekday){
+    datasets.push({
+      label:'平日轉單率',
+      data:weekdayPcts,
+      borderColor:'#8B2F3F',  // 暗紅色
+      backgroundColor:'rgba(139,47,63,0.06)',
+      tension:0.3,
+      borderWidth:2.5,
+      pointRadius:5,
+      pointBackgroundColor:'#8B2F3F',
+      fill:false
+    });
+  }
+
+  trendChart=new Chart(ctx,{
+    type:'line',
+    plugins:[targetLinePlugin, pointValuePlugin],
+    data:{
+      labels:arr.map(h=>h.wk),
+      datasets
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          mode:'index',
+          intersect:false,
+          callbacks:{
+            label:(c)=>c.dataset.label+'：'+(c.parsed.y!==null?c.parsed.y.toFixed(2)+'%':'—')
+          }
+        }
+      },
+      scales:{
+        y:{
+          min:yMin,
+          max:yMax,
+          ticks:{
+            font:{size:12},
+            stepSize:1,
+            callback:(v)=>v+'%'
+          },
+          grid:{color:'rgba(0,0,0,0.07)'}
+        },
+        x:{ticks:{font:{size:12},autoSkip:false}}
+      }
+    }
+  });
+}
+
+async function deleteTrendRow(idx){
+  if(!confirm('確定刪除這週的KPI記錄？'))return;
+  const wk=window._histCache[idx]?.wk;
+  if(!wk)return;
+  showSaving(true);
+  await window.fbDeleteHist(wk);
+  await window.loadAllData();
+  showSaving(false);
+  renderTrend();
+}
+async function clearAllKPI(){
+  if(!confirm('確定清除全部歷週KPI記錄？'))return;
+  showSaving(true);
+  for(const h of window._histCache) await window.fbDeleteHist(h.wk);
+  await window.loadAllData();
+  showSaving(false);
+  renderTrend();
+}
+
+
+// ══════ PAGE 8: 異常率追蹤 ══════
+let anomRegOffset = 0;        // 登記日期 — 週次偏移(0=本週,週四起算)
+let anomShipHMOffset = 0;     // 出貨日期 — 半月偏移(0=本半月,以今天決定)
+let anomRegChart = null;
+let anomShipChart = null;
+
+// ── Half-month range tools ──
+function getHalfMonthRange(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const y = d.getFullYear();
+  const m = d.getMonth();
+  const day = d.getDate();
+  let start, end;
+  if(day <= 15){
+    start = new Date(y, m, 1);
+    end = new Date(y, m, 15);
+  } else {
+    start = new Date(y, m, 16);
+    end = new Date(y, m+1, 0);
+  }
+  return {start: toStr(start), end: toStr(end), label: `${toStr(start)} ~ ${toStr(end)}`};
+}
+
+// 取得指定偏移的半月區間:offset=0 為本半月,-1 為上半月,+1 為下半月
+function getAnomHalfMonthInfo(offset){
+  const today = new Date();
+  // 先找今天所在半月的起始
+  let cur = getHalfMonthRange(toStr(today));
+  // 用「往前 / 往後」一個半月的方式移動
+  // 簡單做法:取一個基準起始日,加上 offset 個半月
+  let startD = new Date(cur.start+'T00:00:00');
+  for(let i=0;i<Math.abs(offset);i++){
+    if(offset > 0){
+      // 移到下一個半月
+      if(startD.getDate() === 1){
+        startD = new Date(startD.getFullYear(), startD.getMonth(), 16);
+      } else {
+        startD = new Date(startD.getFullYear(), startD.getMonth()+1, 1);
+      }
+    } else {
+      // 移到上一個半月
+      if(startD.getDate() === 16){
+        startD = new Date(startD.getFullYear(), startD.getMonth(), 1);
+      } else {
+        // 是某月 1 日 → 上個月 16
+        const prev = new Date(startD.getFullYear(), startD.getMonth()-1, 16);
+        startD = prev;
+      }
+    }
+  }
+  const start = toStr(startD);
+  const range = getHalfMonthRange(start);
+  // mdLabel: 例如「2026 年 5 月上半」
+  const half = startD.getDate()<=15 ? '上半' : '下半';
+  const mdLabel = `${startD.getFullYear()} 年 ${startD.getMonth()+1} 月${half}`;
+  return {
+    hmStart: range.start,
+    hmEnd: range.end,
+    hmLabel: range.label,
+    mdLabel
+  };
+}
+
+// ── Thursday-anchor weekly tools (for 登記日期)──
+function getAnomThursdayOf(offset){
+  const now = new Date();
+  const day = now.getDay();
+  const diff = day >= 4 ? (day - 4) : (day + 3);
+  const thu = new Date(now);
+  thu.setDate(now.getDate() - diff + offset * 7);
+  thu.setHours(0,0,0,0);
+  return thu;
+}
+
+function getAnomRegInfo(){
+  const thu = getAnomThursdayOf(anomRegOffset);
+  const wed = new Date(thu); wed.setDate(thu.getDate()+6);
+  const thuStr = toStr(thu);
+  const wedStr = toStr(wed);
+  const mdLabel = `${thu.getMonth()+1}/${thu.getDate()} ～ ${wed.getMonth()+1}/${wed.getDate()}`;
+  const y = thu.getFullYear();
+  const jan1 = new Date(y,0,1);
+  const wkNum = Math.ceil(((thu-jan1)/86400000+jan1.getDay()+1)/7);
+  const wkKey = `${y}-W${String(wkNum).padStart(2,'0')}`;
+  return { thuStr, wedStr, mdLabel, wkKey };
+}
+
+// ── 個別讀寫 ──
+function getAnomRegSnapshot(thuStr){
+  return (window._anomalyHistCache || []).find(h=>h.monStr===thuStr) || null;
+}
+function getAnomShipSnapshot(hmStart){
+  return (window._anomalyHistShipCache || []).find(h=>h.hmStart===hmStart) || null;
+}
+
+function loadAnomRegInputs(){
+  const info = getAnomRegInfo();
+  document.getElementById('anom-reg-label').textContent = info.mdLabel;
+  document.getElementById('anom-reg-range').textContent = '週四 ' + info.thuStr + ' ~ 週三 ' + info.wedStr;
+  const snap = getAnomRegSnapshot(info.thuStr);
+  if(snap && snap.reg){
+    document.getElementById('anom-reg-status').textContent = '・已儲存';
+    ['total','err','def','oth'].forEach(field=>{
+      const el = document.getElementById(`anom-reg-${field}`);
+      if(el) el.value = (snap.reg[field]!=null) ? snap.reg[field] : '';
+    });
+    document.getElementById('anom-save-reg-btn').textContent = '更新登記資料 →';
+  } else {
+    document.getElementById('anom-reg-status').textContent = '・未儲存';
+    ['total','err','def','oth'].forEach(field=>{
+      const el = document.getElementById(`anom-reg-${field}`);
+      if(el) el.value = '';
+    });
+    document.getElementById('anom-save-reg-btn').textContent = '儲存登記資料 →';
+  }
+  calcAnom();
+}
+
+function loadAnomShipInputs(){
+  const info = getAnomHalfMonthInfo(anomShipHMOffset);
+  document.getElementById('anom-ship-label').textContent = info.mdLabel;
+  document.getElementById('anom-ship-range').textContent = info.hmLabel;
+  const snap = getAnomShipSnapshot(info.hmStart);
+  if(snap && snap.ship){
+    document.getElementById('anom-ship-status').textContent = '・已儲存';
+    ['total','err','def','oth'].forEach(field=>{
+      const el = document.getElementById(`anom-ship-${field}`);
+      if(el) el.value = (snap.ship[field]!=null) ? snap.ship[field] : '';
+    });
+    document.getElementById('anom-save-ship-btn').textContent = '更新出貨資料 →';
+  } else {
+    document.getElementById('anom-ship-status').textContent = '・未儲存';
+    ['total','err','def','oth'].forEach(field=>{
+      const el = document.getElementById(`anom-ship-${field}`);
+      if(el) el.value = '';
+    });
+    document.getElementById('anom-save-ship-btn').textContent = '儲存出貨資料 →';
+  }
+  calcAnom();
+}
+
+function loadAnomInputs(){
+  loadAnomRegInputs();
+  loadAnomShipInputs();
+}
+
+function changeAnomRegWeek(target){
+  anomRegOffset = (target===0) ? 0 : anomRegOffset + target;
+  loadAnomRegInputs();
+}
+function changeAnomShipHM(target){
+  anomShipHMOffset = (target===0) ? 0 : anomShipHMOffset + target;
+  loadAnomShipInputs();
+}
+
+function calcAnom(){
+  ['reg','ship'].forEach(prefix=>{
+    const total = parseInt(document.getElementById(`anom-${prefix}-total`).value) || 0;
+    const err = parseInt(document.getElementById(`anom-${prefix}-err`).value) || 0;
+    const def = parseInt(document.getElementById(`anom-${prefix}-def`).value) || 0;
+    const oth = parseInt(document.getElementById(`anom-${prefix}-oth`).value) || 0;
+    const errPct = total>0 ? (err/total*100) : null;
+    const defPct = total>0 ? (def/total*100) : null;
+    const othPct = total>0 ? (oth/total*100) : null;
+    document.getElementById(`anom-${prefix}-err-pct`).textContent = errPct!==null ? errPct.toFixed(2)+'%' : '—';
+    document.getElementById(`anom-${prefix}-def-pct`).textContent = defPct!==null ? defPct.toFixed(2)+'%' : '—';
+    document.getElementById(`anom-${prefix}-oth-pct`).textContent = othPct!==null ? othPct.toFixed(2)+'%' : '—';
+  });
+}
+
+async function saveAnomReg(){
+  const info = getAnomRegInfo();
+  const reg = {
+    total: parseInt(document.getElementById('anom-reg-total').value) || 0,
+    err:   parseInt(document.getElementById('anom-reg-err').value) || 0,
+    def:   parseInt(document.getElementById('anom-reg-def').value) || 0,
+    oth:   parseInt(document.getElementById('anom-reg-oth').value) || 0,
+  };
+  if(reg.total===0 && reg.err===0 && reg.def===0 && reg.oth===0){
+    alert('請至少填寫一個欄位');
+    return;
+  }
+  const record = {
+    monStr: info.thuStr,  // 用週四日期當 key
+    sunStr: info.wedStr,
+    wk: info.wkKey,
+    label: info.wkKey+'（'+info.mdLabel+'）',
+    reg
+  };
+  showSaving(true);
+  await window.fbSetAnomalyHist(record);
+  window._anomalyHistCache = await window.fbGetAnomalyHist();
+  showSaving(false);
+  loadAnomRegInputs();
+  renderAnomTrend();
+  alert('✅ 登記資料已儲存！');
+}
+
+async function saveAnomShip(){
+  const info = getAnomHalfMonthInfo(anomShipHMOffset);
+  const ship = {
+    total: parseInt(document.getElementById('anom-ship-total').value) || 0,
+    err:   parseInt(document.getElementById('anom-ship-err').value) || 0,
+    def:   parseInt(document.getElementById('anom-ship-def').value) || 0,
+    oth:   parseInt(document.getElementById('anom-ship-oth').value) || 0,
+  };
+  if(ship.total===0 && ship.err===0 && ship.def===0 && ship.oth===0){
+    alert('請至少填寫一個欄位');
+    return;
+  }
+  const record = {
+    hmStart: info.hmStart,
+    hmEnd: info.hmEnd,
+    label: info.mdLabel+'（'+info.hmLabel+'）',
+    ship
+  };
+  showSaving(true);
+  await window.fbSetAnomalyHistShip(record);
+  window._anomalyHistShipCache = await window.fbGetAnomalyHistShip();
+  showSaving(false);
+  loadAnomShipInputs();
+  renderAnomTrend();
+  alert('✅ 出貨資料已儲存！');
+}
+
+async function deleteAnomRegRow(thuStr){
+  if(!confirm('確定刪除這週的登記資料？')) return;
+  showSaving(true);
+  await window.fbDeleteAnomalyHist(thuStr);
+  window._anomalyHistCache = await window.fbGetAnomalyHist();
+  showSaving(false);
+  loadAnomRegInputs();
+  renderAnomTrend();
+}
+
+async function deleteAnomShipRow(hmStart){
+  if(!confirm('確定刪除這個半月的出貨資料？')) return;
+  showSaving(true);
+  await window.fbDeleteAnomalyHistShip(hmStart);
+  window._anomalyHistShipCache = await window.fbGetAnomalyHistShip();
+  showSaving(false);
+  loadAnomShipInputs();
+  renderAnomTrend();
+}
+
+function renderAnomTrend(){
+  const regArr = window._anomalyHistCache || [];
+  const shipArr = window._anomalyHistShipCache || [];
+  const empty = document.getElementById('anom-trend-empty');
+  const wrap = document.getElementById('anom-trend-wrap');
+  if(regArr.length===0 && shipArr.length===0){
+    empty.style.display = 'block';
+    wrap.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  wrap.style.display = 'block';
+
+  const colors = ['#993556','#BA7517','#534AB7'];
+  const nameTags = ['商品錯誤率','商品瑕疵率','其他問題率'];
+
+  const drawChart = (canvasId, labels, lines, existingRef)=>{
+    const ctx = document.getElementById(canvasId);
+    if(existingRef) existingRef.destroy();
+    const allVals = lines.flat().filter(v=>v!==null);
+    const maxVal = allVals.length>0 ? Math.max(...allVals) : 0.5;
+    const minVal = allVals.length>0 ? Math.min(...allVals) : 0;
+    // 用 0.05 為刻度,範圍貼近資料(min 往下取整、max 往上取整,各加 1 格緩衝)
+    const step = 0.05;
+    const yMin = Math.max(0, Math.floor(minVal/step)*step - step);
+    const yMax = Math.ceil(maxVal/step)*step + step;
+    return new Chart(ctx, {
+      type:'line',
+      data:{
+        labels,
+        datasets: lines.map((data,i)=>({
+          label: nameTags[i],
+          data,
+          borderColor: colors[i],
+          backgroundColor: colors[i],
+          borderWidth: 2,
+          pointRadius: 4,
+          tension: 0.3,
+          fill: false,
+          spanGaps: false
+        }))
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{display:false},
+          tooltip:{
+            mode:'index',intersect:false,
+            callbacks:{
+              label:(c)=>c.dataset.label+'：'+(c.parsed.y!==null?c.parsed.y.toFixed(2)+'%':'—')
+            }
+          }
+        },
+        scales:{
+          y:{
+            min:yMin, max:yMax,
+            ticks:{
+              font:{size:11},
+              stepSize: step,
+              callback:(v)=>v.toFixed(2)+'%'
+            },
+            grid:{color:'rgba(0,0,0,0.05)'}
+          },
+          x:{ticks:{font:{size:11},autoSkip:false}}
+        }
+      }
+    });
+  };
+
+  // 登記日期 chart
+  const regSorted = regArr.slice().sort((a,b)=>a.monStr.localeCompare(b.monStr));
+  const regLabels = regSorted.map(r => r.wk || r.monStr);
+  const regLines = ['err','def','oth'].map(field=>regSorted.map(r=>{
+    const g = r.reg;
+    if(!g || !g.total || g.total===0) return null;
+    return +(g[field]/g.total*100).toFixed(2);
+  }));
+  anomRegChart = drawChart('anomRegChart', regLabels, regLines, anomRegChart);
+
+  // 出貨日期 chart
+  const shipSorted = shipArr.slice().sort((a,b)=>a.hmStart.localeCompare(b.hmStart));
+  const shipLabels = shipSorted.map(r => {
+    // 簡短標籤:'5月上' / '5月下'
+    const d = new Date(r.hmStart+'T00:00:00');
+    return `${d.getMonth()+1}月${d.getDate()===1?'上':'下'}`;
+  });
+  const shipLines = ['err','def','oth'].map(field=>shipSorted.map(r=>{
+    const g = r.ship;
+    if(!g || !g.total || g.total===0) return null;
+    return +(g[field]/g.total*100).toFixed(2);
+  }));
+  anomShipChart = drawChart('anomShipChart', shipLabels, shipLines, anomShipChart);
+
+  // 表格(登記和出貨分開顯示)
+  const fmtPct = (g, field) => {
+    if(!g || !g.total || g.total===0) return '—';
+    return (g[field]/g.total*100).toFixed(2)+'%';
+  };
+  const fmtNum = (v) => v ? v.toLocaleString() : '—';
+  // 用 hmStart 把 ship 資料分群,以便和 reg 拼表(這裡簡化處理:直接兩個區塊)
+  let html = '';
+  if(regSorted.length>0){
+    html += regSorted.map(r => `<tr>
+      <td style="font-weight:500">${r.label || r.wk || r.monStr}</td>
+      <td><span style="background:#E8F0FB;color:#1a4a8a;font-size:10px;padding:1px 6px;border-radius:4px;">登記</span></td>
+      <td>${fmtNum(r.reg?.total)}</td>
+      <td>${fmtPct(r.reg,'err')}</td>
+      <td>${fmtPct(r.reg,'def')}</td>
+      <td>${fmtPct(r.reg,'oth')}</td>
+      <td><button class="del-btn" onclick="deleteAnomRegRow('${r.monStr}')">✕</button></td>
+    </tr>`).join('');
+  }
+  if(shipSorted.length>0){
+    html += shipSorted.map(r => `<tr>
+      <td style="font-weight:500">${r.label || r.hmStart}</td>
+      <td><span style="background:#FFF3E0;color:#8a4a00;font-size:10px;padding:1px 6px;border-radius:4px;">出貨</span></td>
+      <td>${fmtNum(r.ship?.total)}</td>
+      <td>${fmtPct(r.ship,'err')}</td>
+      <td>${fmtPct(r.ship,'def')}</td>
+      <td>${fmtPct(r.ship,'oth')}</td>
+      <td><button class="del-btn" onclick="deleteAnomShipRow('${r.hmStart}')">✕</button></td>
+    </tr>`).join('');
+  }
+  document.getElementById('anom-tbody').innerHTML = html;
+}
+
+
+// ══════ PAGE 6: 期間統計 ══════
+let currentQ = 2; // default to Q2 since user entered April data
+let currentQMode = 'quarter'; // 'quarter' | 'quick' | 'custom'
+let currentQuickRange = null; // 'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth' | 'last7' | 'last30'
+
+function selectQ(q){
+  currentQ = q;
+  renderQuarter();
+}
+
+// 平日切換:scope='quarter' | 'platform'
+function toggleWeekdayOnly(scope){
+  const cbId = scope==='quarter' ? 'q-weekday-only' : 'p-weekday-only';
+  const cb = document.getElementById(cbId);
+  setWeekdayOnly(scope, cb.checked);
+  if(scope==='quarter') renderQuarter();
+  else renderPlatform();
+}
+
+// 從 daily array 過濾掉假日 (若 enabled)
+function filterDailyWeekday(daily, scope){
+  if(!getWeekdayOnly(scope)) return {filtered: daily, excludedCount: 0};
+  const filtered = daily.filter(r => !isHoliday(r.date));
+  return {filtered, excludedCount: daily.length - filtered.length};
+}
+
+// 同步 checkbox 與 localStorage 狀態
+function syncWeekdayCheckbox(scope){
+  const cbId = scope==='quarter' ? 'q-weekday-only' : 'p-weekday-only';
+  const cb = document.getElementById(cbId);
+  if(cb) cb.checked = getWeekdayOnly(scope);
+}
+
+// ── 假日管理 modal ──
+function openHolidayManager(){
+  // 動態建立 modal,如果已存在就更新內容
+  let modal = document.getElementById('holiday-modal');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'holiday-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+    modal.onclick = (e) => { if(e.target===modal) closeHolidayManager(); };
+    modal.innerHTML = `
+      <div style="background:#FAF9F5;border-radius:14px;max-width:520px;width:100%;max-height:85vh;display:flex;flex-direction:column;padding:1.5rem;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:1rem;">
+          <div>
+            <h2 style="margin:0 0 4px 0;font-size:18px;font-weight:500;">假日管理</h2>
+            <p style="margin:0;font-size:12px;color:#888780;">「只看平日」會排除週六日 + 以下日期</p>
+          </div>
+          <button class="bsm" onclick="closeHolidayManager()" style="padding:4px 10px;font-size:14px;">✕</button>
+        </div>
+
+        <div style="display:flex;gap:6px;margin-bottom:1rem;align-items:end;flex-wrap:wrap;">
+          <div class="ig" style="margin:0;flex:1;min-width:140px;"><label>新增自訂假日</label><input type="date" id="holiday-new-date" style="width:100%;"></div>
+          <button class="bsm bp" onclick="addCustomHoliday()" style="font-size:12px;padding:6px 14px;">新增</button>
+        </div>
+
+        <div id="holiday-list" style="flex:1;overflow-y:auto;border:.5px solid rgba(0,0,0,.1);border-radius:8px;padding:8px;background:#fff;"></div>
+
+        <div style="margin-top:1rem;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#888780;">
+          <span>內建假日為 2025-2026 台灣國定假日（含補假調整）</span>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  } else {
+    modal.style.display = 'flex';
+  }
+  renderHolidayList();
+}
+
+function closeHolidayManager(){
+  const modal = document.getElementById('holiday-modal');
+  if(modal) modal.style.display = 'none';
+}
+
+function renderHolidayList(){
+  const list = document.getElementById('holiday-list');
+  if(!list) return;
+  const custom = getCustomHolidays();
+  const built = BUILT_IN_HOLIDAYS.slice().sort();
+  const customSorted = custom.slice().sort();
+
+  const fmtRow = (d, isCustom) => {
+    const dt = new Date(d+'T00:00:00');
+    const wd = ['日','一','二','三','四','五','六'][dt.getDay()];
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:.5px solid rgba(0,0,0,.05);">
+      <span style="font-size:13px;">${d} <span style="color:#aaa;font-size:11px;">週${wd}</span> ${isCustom?'<span style="background:#FFF3E0;color:#8a4a00;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;">自訂</span>':''}</span>
+      ${isCustom?`<button class="del-btn" onclick="removeCustomHoliday('${d}')">✕</button>`:''}
+    </div>`;
+  };
+
+  let html = '';
+  if(customSorted.length>0){
+    html += `<div style="font-size:11px;color:#888780;padding:4px 8px;font-weight:500;">自訂假日（${customSorted.length}）</div>`;
+    html += customSorted.map(d=>fmtRow(d,true)).join('');
+    html += '<div style="height:8px;"></div>';
+  }
+  html += `<div style="font-size:11px;color:#888780;padding:4px 8px;font-weight:500;">內建台灣國定假日（${built.length}）</div>`;
+  html += built.map(d=>fmtRow(d,false)).join('');
+  list.innerHTML = html;
+}
+
+function addCustomHoliday(){
+  const input = document.getElementById('holiday-new-date');
+  if(!input || !input.value) return;
+  const d = input.value;
+  const custom = getCustomHolidays();
+  if(BUILT_IN_HOLIDAYS.includes(d)){
+    alert('該日已在內建假日清單');
+    return;
+  }
+  if(custom.includes(d)){
+    alert('該日已新增過');
+    return;
+  }
+  custom.push(d);
+  setCustomHolidays(custom);
+  input.value = '';
+  renderHolidayList();
+  // 重新計算當前頁面
+  if(document.getElementById('page-quarter').classList.contains('active')) renderQuarter();
+  if(document.getElementById('page-platform').classList.contains('active')) renderPlatform();
+}
+
+function removeCustomHoliday(d){
+  const custom = getCustomHolidays().filter(x=>x!==d);
+  setCustomHolidays(custom);
+  renderHolidayList();
+  if(document.getElementById('page-quarter').classList.contains('active')) renderQuarter();
+  if(document.getElementById('page-platform').classList.contains('active')) renderPlatform();
+}
+
+function setQMode(mode){
+  currentQMode = mode;
+  // toggle control panels
+  document.getElementById('q-ctrl-quarter').style.display = mode==='quarter' ? 'flex' : 'none';
+  document.getElementById('q-ctrl-quick').style.display   = mode==='quick'   ? 'flex' : 'none';
+  document.getElementById('q-ctrl-custom').style.display  = mode==='custom'  ? 'flex' : 'none';
+  // highlight active mode button
+  ['quarter','quick','custom'].forEach(m=>{
+    const b=document.getElementById('q-mode-'+m);
+    if(!b)return;
+    if(m===mode){b.style.background='#185FA5';b.style.color='#fff';b.style.borderColor='#185FA5';}
+    else{b.style.background='';b.style.color='';b.style.borderColor='';}
+  });
+  // sensible defaults when switching
+  if(mode==='quick' && !currentQuickRange){currentQuickRange='thisMonth';}
+  if(mode==='custom'){
+    const s=document.getElementById('q-custom-start');
+    const e=document.getElementById('q-custom-end');
+    if(!s.value || !e.value){
+      // default to last 30 days
+      const today=new Date();
+      const start=new Date(today);start.setDate(today.getDate()-29);
+      s.value=toStr(start);
+      e.value=toStr(today);
+    }
+  }
+  renderQuarter();
+}
+
+function selectQuick(key){
+  currentQuickRange = key;
+  renderQuarter();
+}
+
+function getQDateRange(year, q){
+  const starts = [null,[1,1],[4,1],[7,1],[10,1]];
+  const ends   = [null,[3,31],[6,30],[9,30],[12,31]];
+  const [sm,sd] = starts[q];
+  const [em,ed] = ends[q];
+  const start = `${year}-${String(sm).padStart(2,'0')}-${String(sd).padStart(2,'0')}`;
+  const end   = `${year}-${String(em).padStart(2,'0')}-${String(ed).padStart(2,'0')}`;
+  return {start, end};
+}
+
+function getQuickDateRange(key){
+  const today=new Date();today.setHours(0,0,0,0);
+  let start, end;
+  const day=today.getDay();
+  const thisMon=new Date(today);thisMon.setDate(today.getDate()-(day===0?6:day-1));
+  if(key==='thisWeek'){
+    start=thisMon;
+    end=new Date(thisMon);end.setDate(thisMon.getDate()+6);
+  } else if(key==='lastWeek'){
+    const lastMon=new Date(thisMon);lastMon.setDate(thisMon.getDate()-7);
+    start=lastMon;
+    end=new Date(lastMon);end.setDate(lastMon.getDate()+6);
+  } else if(key==='thisMonth'){
+    start=new Date(today.getFullYear(),today.getMonth(),1);
+    end=new Date(today.getFullYear(),today.getMonth()+1,0);
+  } else if(key==='lastMonth'){
+    start=new Date(today.getFullYear(),today.getMonth()-1,1);
+    end=new Date(today.getFullYear(),today.getMonth(),0);
+  } else if(key==='last7'){
+    start=new Date(today);start.setDate(today.getDate()-6);
+    end=today;
+  } else if(key==='last30'){
+    start=new Date(today);start.setDate(today.getDate()-29);
+    end=today;
+  }
+  return {start:toStr(start), end:toStr(end)};
+}
+
+function quickLabel(key){
+  return {thisWeek:'本週',lastWeek:'上週',thisMonth:'本月',lastMonth:'上月',last7:'近7天',last30:'近30天'}[key]||'';
+}
+
+// highlight active quick button
+function highlightQuickBtn(){
+  document.querySelectorAll('#q-ctrl-quick button').forEach(b=>{
+    const m=(b.getAttribute('onclick')||'').match(/'([^']+)'/);
+    const k=m?m[1]:'';
+    if(k===currentQuickRange){b.style.background='#185FA5';b.style.color='#fff';b.style.borderColor='#185FA5';}
+    else{b.style.background='';b.style.color='';b.style.borderColor='';}
+  });
+}
+
+function renderQuarter(){
+  // populate year selector (always, even if not in quarter mode)
+  const yearSel = document.getElementById('q-year');
+  const allDaily = LD();
+  const allKPI   = LH();
+  const years = new Set();
+  allDaily.forEach(r => years.add(r.date.slice(0,4)));
+  allKPI.forEach(h => years.add(h.monStr ? h.monStr.slice(0,4) : h.wk.slice(0,4)));
+  years.add(String(new Date().getFullYear()));
+  const yearArr = Array.from(years).sort().reverse();
+  const prevYear = yearSel.value;
+  yearSel.innerHTML = yearArr.map(y=>`<option value="${y}">${y} 年</option>`).join('');
+  if(yearArr.includes(prevYear)) yearSel.value = prevYear;
+  const year = parseInt(yearSel.value);
+  const q = currentQ;
+
+  // ── Resolve date range based on mode ──
+  let start, end, rangeHint;
+  if(currentQMode === 'quarter'){
+    const r=getQDateRange(year, q);
+    start=r.start; end=r.end;
+    rangeHint=`${year} 年 Q${q}（${start} ～ ${end}）`;
+    // highlight active quarter button
+    [1,2,3,4].forEach(i=>{
+      const b=document.getElementById('q-btn-'+i);
+      b.style.background = i===q ? '#185FA5' : '';
+      b.style.color = i===q ? '#fff' : '';
+      b.style.borderColor = i===q ? '#185FA5' : '';
+    });
+  } else if(currentQMode === 'quick'){
+    if(!currentQuickRange) currentQuickRange='thisMonth';
+    const r=getQuickDateRange(currentQuickRange);
+    start=r.start; end=r.end;
+    rangeHint=`${quickLabel(currentQuickRange)}（${start} ～ ${end}）`;
+    highlightQuickBtn();
+  } else { // custom
+    start=document.getElementById('q-custom-start').value;
+    end=document.getElementById('q-custom-end').value;
+    if(!start || !end){
+      document.getElementById('q-range-hint').textContent='請選擇起訖日期';
+      document.getElementById('q-empty').style.display='block';
+      document.getElementById('q-empty').textContent='請選擇起訖日期';
+      document.getElementById('q-wrap').style.display='none';
+      return;
+    }
+    if(start > end){
+      document.getElementById('q-range-hint').textContent='⚠ 起始日期不能晚於結束日期';
+      document.getElementById('q-empty').style.display='block';
+      document.getElementById('q-empty').textContent='⚠ 起始日期不能晚於結束日期';
+      document.getElementById('q-wrap').style.display='none';
+      return;
+    }
+    // count days
+    const ds=new Date(start+'T00:00:00'), de=new Date(end+'T00:00:00');
+    const days=Math.round((de-ds)/86400000)+1;
+    rangeHint=`自訂區間（${start} ～ ${end}，共 ${days} 天）`;
+  }
+  document.getElementById('q-range-hint').textContent=rangeHint;
+
+  // Get all daily records in this range (完整,給明細表用)
+  const dailyAll = allDaily.filter(r => r.date >= start && r.date <= end);
+  // 平日過濾(給指標計算用)
+  syncWeekdayCheckbox('quarter');
+  const filterRes = filterDailyWeekday(dailyAll, 'quarter');
+  const daily = filterRes.filtered;
+  // 顯示「排除幾天」提示
+  const excludedInfo = document.getElementById('q-excluded-info');
+  if(excludedInfo){
+    if(getWeekdayOnly('quarter') && filterRes.excludedCount>0){
+      excludedInfo.textContent = `（已排除 ${filterRes.excludedCount} 天假日）`;
+    } else if(getWeekdayOnly('quarter')){
+      excludedInfo.textContent = '（區間內無假日可排除）';
+    } else {
+      excludedInfo.textContent = '';
+    }
+  }
+
+  // Get all saved weekly KPIs whose monStr falls in range
+  const kpiWeeks = allKPI.filter(h => {
+    const monStr = h.monStr || '';
+    return monStr >= start && monStr <= end;
+  });
+
+  const hasAny = dailyAll.length > 0 || kpiWeeks.length > 0 || (window._satHistCache && window._satHistCache.length>0);
+  document.getElementById('q-empty').style.display = hasAny ? 'none' : 'block';
+  document.getElementById('q-empty').textContent = '這個區間還沒有任何資料';
+  document.getElementById('q-wrap').style.display  = hasAny ? 'block' : 'none';
+  if(!hasAny) return;
+
+  const set = (id,v) => document.getElementById(id).textContent = v;
+  const pill = (id,v) => {
+    const el = document.getElementById(id);
+    el.className = 'pill ' + pillCls(v);
+    el.textContent = v !== null ? v.toFixed(2)+' 分' : '—';
+  };
+
+  // ── 回覆率：group daily by week, compute per-week 4-acct avg, then avg of those ──
+  const weekMap = {};
+  daily.forEach(r => {
+    const d = new Date(r.date+'T00:00:00');
+    const day = d.getDay();
+    const mon = new Date(d); mon.setDate(d.getDate()-(day===0?6:day-1));
+    const monS = toStr(mon);
+    if(!weekMap[monS]) weekMap[monS] = [];
+    weekMap[monS].push(r);
+  });
+
+  const weekReplyAvgs = Object.values(weekMap).map(wRecs => {
+    const acctAvgsW = ACCTS.map(a => {
+      const vals = wRecs.map(r=>r['rr'+a]).filter(v=>v!==null);
+      return vals.length>0 ? vals.reduce((s,v)=>s+v,0)/vals.length : null;
+    }).filter(v=>v!==null);
+    return acctAvgsW.length>0 ? acctAvgsW.reduce((s,v)=>s+v,0)/acctAvgsW.length : null;
+  }).filter(v=>v!==null);
+
+  const replyPct = weekReplyAvgs.length>0 ? weekReplyAvgs.reduce((s,v)=>s+v,0)/weekReplyAvgs.length : null;
+  set('q-reply-pct', replyPct!==null ? replyPct.toFixed(2)+'%' : '無資料');
+  set('q-reply-ach', replyPct!==null ? (replyPct/100*100).toFixed(1)+'%' : '—');
+  set('q-reply-weeks', replyPct!==null ? weekReplyAvgs.length+' 週' : '—');
+
+  // ── 轉單率：total buy / total rep across all daily in range ──
+  const totRep = daily.reduce((s,r)=>s+(r.repA||0)+(r.repB||0)+(r.repC||0)+(r.repD||0),0);
+  const totBuy = daily.reduce((s,r)=>s+(r.buyA||0)+(r.buyB||0)+(r.buyC||0)+(r.buyD||0),0);
+  const orderPct = totRep>0 ? totBuy/totRep*100 : null;
+  set('q-order-pct', orderPct!==null ? orderPct.toFixed(2)+'%' : '無資料');
+  set('q-order-ach', orderPct!==null ? (orderPct/13*100).toFixed(1)+'%' : '—');
+  set('q-order-rep', totRep>0 ? totRep+' 則' : '—');
+
+  // ── 滿意度：直接用最新快照的累積滿意度（與服務滿意度頁面一致）──
+  const satHist = (window._satHistCache || []);
+  let satPct = null;
+  let satRawScore = null;
+  let satInfo = '';
+  // 取「<=end」最後一筆快照，用累積數字直接算
+  const endSnap = satHist.filter(h => h.monStr <= end).slice(-1)[0];
+  if(endSnap){
+    let cumT=0, cumP=0;
+    ACCTS.forEach(a=>{
+      const cur = endSnap[a] || {};
+      for(let s=1;s<=5;s++){
+        cumT += (cur[s]||0);
+        if(s>=4) cumP += (cur[s]||0);
+      }
+    });
+    if(cumT>0){
+      satPct = cumP/cumT*100;
+      satInfo = `累積總評價 ${cumT} 則`;
+      if(satPct>=99) satRawScore = 100;
+      else satRawScore = Math.max(0, Math.min(100, 100 - (99-satPct)*2.5));
+    }
+  }
+  // 如果沒有快照，從當前 _satCache 直接算
+  if(satPct===null && window._satCache){
+    let cumT=0, cumP=0;
+    ACCTS.forEach(a=>{
+      const cur = window._satCache[a] || {};
+      for(let s=1;s<=5;s++){
+        cumT += (cur[s]||0);
+        if(s>=4) cumP += (cur[s]||0);
+      }
+    });
+    if(cumT>0){
+      satPct = cumP/cumT*100;
+      satInfo = `累積總評價 ${cumT} 則`;
+      if(satPct>=99) satRawScore = 100;
+      else satRawScore = Math.max(0, Math.min(100, 100 - (99-satPct)*2.5));
+    }
+  }
+  set('q-sat-pct',  satPct!==null ? satPct.toFixed(2)+'%' : '無儲存資料');
+  set('q-sat-ach',  satPct!==null ? (satPct/99*100).toFixed(1)+'%' : '—');
+  set('q-sat-weeks', satInfo || '—');
+
+  // ── 留任率：from saved weekly KPI records (簡單平均) ──
+  const retScores  = kpiWeeks.map(h=>h.s4).filter(v=>v!==null);
+  const retPctRaw  = retScores.length>0  ? retScores.reduce((s,v)=>s+v,0)/retScores.length  : null;
+  set('q-ret-pct',  retPctRaw!==null  ? retPctRaw.toFixed(2)+' 分（原始分平均）'  : '無儲存資料');
+  set('q-ret-ach',  retPctRaw!==null  ? (retPctRaw/100*100).toFixed(1)+'%' : '—');
+  set('q-ret-weeks', retScores.length>0 ? retScores.length+' 週' : '—');
+
+  // ── Calc reference scores ──
+  const s1 = replyPct!==null  ? Math.min(Math.max(replyPct,0),100)   : null;
+  const s2 = satRawScore;
+  const s3 = orderPct!==null  ? Math.min(Math.max(100+(orderPct-13)*7.69,0),200) : null;
+  const s4 = retPctRaw!==null ? retPctRaw  : null;
+
+  pill('q-reply-raw', s1);
+  pill('q-sat-raw',   s2);
+  pill('q-order-raw', s3);
+  pill('q-ret-raw',   s4);
+
+  let w=0, parts=[];
+  // helper: write 加權分 to指標卡
+  const setW = (id, v) => {
+    const el = document.getElementById(id);
+    if(el) el.textContent = v!==null ? v.toFixed(2)+' 分' : '—';
+  };
+  if(s1!==null){const v=s1/100*15;w+=v;parts.push({n:'回覆率',v});setW('q-reply-w',v);} else {setW('q-reply-w',null);}
+  if(s2!==null){const v=s2/100*15;w+=v;parts.push({n:'滿意度',v});setW('q-sat-w',v);}   else {setW('q-sat-w',null);}
+  if(s3!==null){const v=s3/100*15;w+=v;parts.push({n:'轉單率',v});setW('q-order-w',v);} else {setW('q-order-w',null);}
+  if(s4!==null){const v=s4/100*10;w+=v;parts.push({n:'留任率',v});setW('q-ret-w',v);}   else {setW('q-ret-w',null);}
+
+  if(parts.length>0){
+    set('q-total', w.toFixed(2));
+    const [g,gl] = gradeOf(w);
+    set('q-grade',g); set('q-grade-lbl',gl);
+    document.getElementById('q-breakdown').innerHTML =
+      parts.map(p=>`<span class="bdi">${p.n} ${p.v.toFixed(2)}分</span>`).join('');
+  } else {
+    set('q-total','—'); set('q-grade','—'); set('q-grade-lbl','');
+    document.getElementById('q-breakdown').innerHTML='';
+  }
+
+  // ── Daily detail table (顯示全部資料,假日標示但保留) ──
+  const tbody = document.getElementById('q-tbody');
+  const tEmpty = document.getElementById('q-table-empty');
+  const dailySorted = dailyAll.slice().sort((a,b)=> a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  const weekdayOnly = getWeekdayOnly('quarter');
+
+  if(dailySorted.length===0){tbody.innerHTML='';tEmpty.style.display='block';}
+  else {
+    tEmpty.style.display='none';
+    tbody.innerHTML = dailySorted.map(r => {
+      // 五帳當日平均回覆率
+      const dayReplies = ACCTS.map(a => r['rr'+a]).filter(v => v!==null && v!==undefined);
+      const dReply = dayReplies.length>0 ? dayReplies.reduce((s,v)=>s+v,0)/dayReplies.length : null;
+      // 當日轉單率
+      const dTotRep = (r.repA||0)+(r.repB||0)+(r.repC||0)+(r.repD||0);
+      const dTotBuy = (r.buyA||0)+(r.buyB||0)+(r.buyC||0)+(r.buyD||0);
+      const dOrder  = dTotRep>0 ? dTotBuy/dTotRep*100 : null;
+      // 顯示星期幾
+      const d = new Date(r.date+'T00:00:00');
+      const wday = ['日','一','二','三','四','五','六'][d.getDay()];
+      // 是否為假日(於 weekdayOnly 時會被排除計算)
+      const holiday = isHoliday(r.date);
+      const rowStyle = (weekdayOnly && holiday) ? 'background:#faf6ed;color:#aaa;' : '';
+      const tag = holiday ? '<span style="background:#FFF3E0;color:#8a4a00;font-size:10px;padding:1px 5px;border-radius:4px;margin-left:6px;">假日</span>' : '';
+      return`<tr style="${rowStyle}">
+        <td style="font-weight:500">${r.date} <span style="color:#aaa;font-size:11px;">週${wday}</span>${tag}</td>
+        <td>${dReply!==null?dReply.toFixed(2)+'%':'—'}</td>
+        <td>${dOrder!==null?dOrder.toFixed(2)+'%':'—'}</td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+
+// ══════ PAGE 7: 平台分析 ══════
+let currentPMode = 'quick';
+let currentPQuick = 'thisMonth';
+
+function setPMode(mode){
+  currentPMode = mode;
+  document.getElementById('p-ctrl-quick').style.display  = mode==='quick'  ? 'flex' : 'none';
+  document.getElementById('p-ctrl-custom').style.display = mode==='custom' ? 'flex' : 'none';
+  ['quick','custom'].forEach(m=>{
+    const b=document.getElementById('p-mode-'+m);
+    if(!b)return;
+    if(m===mode){b.style.background='#185FA5';b.style.color='#fff';b.style.borderColor='#185FA5';}
+    else{b.style.background='';b.style.color='';b.style.borderColor='';}
+  });
+  if(mode==='custom'){
+    const s=document.getElementById('p-custom-start');
+    const e=document.getElementById('p-custom-end');
+    if(!s.value || !e.value){
+      const today=new Date();
+      const start=new Date(today);start.setDate(today.getDate()-29);
+      s.value=toStr(start);
+      e.value=toStr(today);
+    }
+  }
+  renderPlatform();
+}
+
+function selectPQuick(key){
+  currentPQuick = key;
+  renderPlatform();
+}
+
+function highlightPQuickBtn(){
+  document.querySelectorAll('#p-ctrl-quick button').forEach(b=>{
+    const m=(b.getAttribute('onclick')||'').match(/'([^']+)'/);
+    const k=m?m[1]:'';
+    if(k===currentPQuick){b.style.background='#185FA5';b.style.color='#fff';b.style.borderColor='#185FA5';}
+    else{b.style.background='';b.style.color='';b.style.borderColor='';}
+  });
+}
+
+// 區間滿意度算法:用「結束日當下的最近快照」減「起始日前最後一筆快照」
+// 算出「區間內新增的評價」的滿意度
+function calcPlatformSat(acct, start, end){
+  const hist = (window._satHistCache || []);
+  if(hist.length===0) return {newTotal:0, newPos:0, pct:null, note:'無滿意度快照'};
+
+  // 區間內(含)最後一筆快照 → 結尾值
+  const endSnap = hist.filter(h => h.monStr <= end).slice(-1)[0];
+  if(!endSnap) return {newTotal:0, newPos:0, pct:null, note:'區間內無快照'};
+
+  // 起始日之前最後一筆快照 → 開頭值(差值就是區間內新增)
+  const startSnap = hist.filter(h => h.monStr < start).slice(-1)[0];
+
+  const cur  = endSnap[acct]   || {1:0,2:0,3:0,4:0,5:0};
+  const prev = startSnap ? (startSnap[acct] || {1:0,2:0,3:0,4:0,5:0}) : {1:0,2:0,3:0,4:0,5:0};
+
+  let newTotal=0, newPos=0;
+  for(let s=1;s<=5;s++){
+    const d = (cur[s]||0) - (prev[s]||0);
+    newTotal += d;
+    if(s>=4) newPos += d;
+  }
+
+  if(newTotal<=0){
+    // 區間內沒新增評價 → 改顯示「截至區間結束的累積滿意度」當參考
+    let ct=0, cp=0;
+    for(let s=1;s<=5;s++){
+      ct += (cur[s]||0);
+      if(s>=4) cp += (cur[s]||0);
+    }
+    const pct = ct>0 ? cp/ct*100 : null;
+    return {newTotal:0, newPos:0, pct, note:'此區間無新增評價，顯示截至區間結束的累積滿意度', isCumulative:true};
+  }
+
+  const pct = newTotal>0 ? newPos/newTotal*100 : null;
+  return {newTotal, newPos, pct, note:null, baseLabel: startSnap ? startSnap.label||startSnap.monStr : '初始'};
+}
+
+function renderPlatform(){
+  const allDaily = window._dailyCache || [];
+
+  // ── Resolve date range ──
+  let start, end, rangeHint;
+  if(currentPMode === 'quick'){
+    const r=getQuickDateRange(currentPQuick);
+    start=r.start; end=r.end;
+    rangeHint=`${quickLabel(currentPQuick)}（${start} ～ ${end}）`;
+    highlightPQuickBtn();
+  } else {
+    start=document.getElementById('p-custom-start').value;
+    end=document.getElementById('p-custom-end').value;
+    if(!start || !end){
+      document.getElementById('p-range-hint').textContent='請選擇起訖日期';
+      document.getElementById('p-empty').style.display='block';
+      document.getElementById('p-empty').textContent='請選擇起訖日期';
+      document.getElementById('p-wrap').style.display='none';
+      return;
+    }
+    if(start > end){
+      document.getElementById('p-range-hint').textContent='⚠ 起始日期不能晚於結束日期';
+      document.getElementById('p-empty').style.display='block';
+      document.getElementById('p-empty').textContent='⚠ 起始日期不能晚於結束日期';
+      document.getElementById('p-wrap').style.display='none';
+      return;
+    }
+    const ds=new Date(start+'T00:00:00'), de=new Date(end+'T00:00:00');
+    const days=Math.round((de-ds)/86400000)+1;
+    rangeHint=`自訂區間（${start} ～ ${end}，共 ${days} 天）`;
+  }
+  document.getElementById('p-range-hint').textContent=rangeHint;
+
+  const dailyAll = allDaily.filter(r => r.date >= start && r.date <= end);
+  // 平日過濾(指標計算用)
+  syncWeekdayCheckbox('platform');
+  const filterRes = filterDailyWeekday(dailyAll, 'platform');
+  const daily = filterRes.filtered;
+  // 顯示「排除幾天」提示
+  const excludedInfo = document.getElementById('p-excluded-info');
+  if(excludedInfo){
+    if(getWeekdayOnly('platform') && filterRes.excludedCount>0){
+      excludedInfo.textContent = `（已排除 ${filterRes.excludedCount} 天假日）`;
+    } else if(getWeekdayOnly('platform')){
+      excludedInfo.textContent = '（區間內無假日可排除）';
+    } else {
+      excludedInfo.textContent = '';
+    }
+  }
+  const hasAny = dailyAll.length > 0 || (window._satHistCache && window._satHistCache.length>0);
+  document.getElementById('p-empty').style.display = hasAny ? 'none' : 'block';
+  document.getElementById('p-empty').textContent = '這個區間還沒有任何資料';
+  document.getElementById('p-wrap').style.display  = hasAny ? 'block' : 'none';
+  if(!hasAny) return;
+
+  // ── 各帳號計算 ──
+  const acctNames = {A:'帳號 A', B:'帳號 B', C:'帳號 C', D:'帳號 D', G:'帳號 G'};
+  const cardsHtml = ACCTS.map(a => {
+    // 回覆率(該帳號區間內每日平均)
+    const replyVals = daily.map(r=>r['rr'+a]).filter(v=>v!==null && v!==undefined);
+    const replyAvg = replyVals.length>0 ? replyVals.reduce((s,v)=>s+v,0)/replyVals.length : null;
+
+    // 轉單率(該帳號區間內總買家 ÷ 總回覆)
+    const totRep = daily.reduce((s,r)=>s+(r['rep'+a]||0),0);
+    const totBuy = daily.reduce((s,r)=>s+(r['buy'+a]||0),0);
+    const orderPct = totRep>0 ? totBuy/totRep*100 : null;
+
+    // 銷售額
+    const totSal = daily.reduce((s,r)=>s+(r['sal'+a]||0),0);
+
+    // 滿意度(差值)
+    const sat = calcPlatformSat(a, start, end);
+
+    return `<div class="kpi-card">
+      <div style="text-align:center;margin-bottom:8px;"><span class="acct-badge acc-${a}" style="margin:0;font-size:13px;padding:4px 14px;">${acctNames[a]}</span></div>
+
+      <div class="krow" style="margin-top:8px;"><span>回覆率</span><span style="font-weight:500;font-size:15px;">${replyAvg!==null?replyAvg.toFixed(2)+'%':'—'}</span></div>
+      <div class="krow"><span style="color:#888780;font-size:11px;">資料天數</span><span style="color:#888780;font-size:11px;">${replyVals.length} 天</span></div>
+
+      <div class="krow" style="margin-top:10px;"><span>轉單率</span><span style="font-weight:500;font-size:15px;">${orderPct!==null?orderPct.toFixed(2)+'%':'—'}</span></div>
+      <div class="krow"><span style="color:#888780;font-size:11px;">回覆 / 買家</span><span style="color:#888780;font-size:11px;">${totRep} / ${totBuy}</span></div>
+      <div class="krow"><span style="color:#888780;font-size:11px;">銷售額</span><span style="color:#888780;font-size:11px;">${totSal>0?'$'+totSal.toLocaleString():'—'}</span></div>
+
+      <div class="krow" style="margin-top:10px;"><span>滿意度${sat.isCumulative?'<span style="font-size:9px;color:#aaa;">（累積）</span>':''}</span><span style="font-weight:500;font-size:15px;">${sat.pct!==null?sat.pct.toFixed(2)+'%':'—'}</span></div>
+      ${sat.newTotal>0
+        ? `<div class="krow"><span style="color:#888780;font-size:11px;">新增評價</span><span style="color:#888780;font-size:11px;">${sat.newTotal} 則（4★+5★：${sat.newPos}）</span></div>`
+        : (sat.note?`<div style="font-size:10px;color:#aaa;margin-top:2px;">${sat.note}</div>`:'')
+      }
+    </div>`;
+  }).join('');
+
+  document.getElementById('p-cards').innerHTML = cardsHtml;
+
+  // ── 區間摘要 ──
+  const allReply = daily.flatMap(r => ACCTS.map(a=>r['rr'+a])).filter(v=>v!==null && v!==undefined);
+  const replyAll = allReply.length>0 ? (allReply.reduce((s,v)=>s+v,0)/allReply.length) : null;
+  const allRep = daily.reduce((s,r)=>s+(r.repA||0)+(r.repB||0)+(r.repC||0)+(r.repD||0),0);
+  const allBuy = daily.reduce((s,r)=>s+(r.buyA||0)+(r.buyB||0)+(r.buyC||0)+(r.buyD||0),0);
+  const allSal = daily.reduce((s,r)=>s+(r.salA||0)+(r.salB||0)+(r.salC||0)+(r.salD||0),0);
+  const allOrder = allRep>0 ? allBuy/allRep*100 : null;
+
+  // 五帳合計滿意度(差值合計)
+  let totalNew=0, totalPos=0, allCumTotal=0, allCumPos=0;
+  ACCTS.forEach(a=>{
+    const s = calcPlatformSat(a, start, end);
+    if(s.isCumulative){
+      // 累積模式下,用該帳號區間結束時的累積評價
+      const hist = (window._satHistCache || []);
+      const endSnap = hist.filter(h => h.monStr <= end).slice(-1)[0];
+      if(endSnap && endSnap[a]){
+        for(let i=1;i<=5;i++){
+          allCumTotal += (endSnap[a][i]||0);
+          if(i>=4) allCumPos += (endSnap[a][i]||0);
+        }
+      }
+    } else {
+      totalNew += s.newTotal;
+      totalPos += s.newPos;
+    }
+  });
+  let satAllPct = null, satAllNote = '';
+  if(totalNew>0){
+    satAllPct = totalPos/totalNew*100;
+    satAllNote = `（新增 ${totalNew} 則評價，4★+5★ 共 ${totalPos} 則）`;
+  } else if(allCumTotal>0){
+    satAllPct = allCumPos/allCumTotal*100;
+    satAllNote = '（區間內無新增評價，顯示累積值）';
+  }
+
+  document.getElementById('p-summary').innerHTML = `
+    <div>五帳平均回覆率：<b style="color:#1a1a18;">${replyAll!==null?replyAll.toFixed(2)+'%':'—'}</b></div>
+    <div>五帳合計轉單率：<b style="color:#1a1a18;">${allOrder!==null?allOrder.toFixed(2)+'%':'—'}</b>（總回覆 ${allRep} 則，總買家 ${allBuy} 人）</div>
+    <div>五帳合計銷售額：<b style="color:#1a1a18;">${allSal>0?'$'+allSal.toLocaleString():'—'}</b></div>
+    <div>五帳合計滿意度：<b style="color:#1a1a18;">${satAllPct!==null?satAllPct.toFixed(2)+'%':'—'}</b>${satAllNote?'<span style="color:#aaa;">'+satAllNote+'</span>':''}</div>
+  `;
+}
+
+
+// ══════ 備份 / 還原 ══════
+function exportBackup(){
+  const data = {
+    version: 4,
+    exportedAt: new Date().toISOString(),
+    kpi_daily4:       window._dailyCache,
+    kpi_sat2:         window._satCache,
+    kpi_hist4:        window._histCache,
+    kpi_satHist:      window._satHistCache,
+    kpi_anomHist:     window._anomalyHistCache,
+    kpi_anomHistShip: window._anomalyHistShipCache,
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  a.download = `KPI備份_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+async function importBackup(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if(!data.version) throw new Error('格式不符');
+      const daily    = data.kpi_daily4   || [];
+      const sat      = data.kpi_sat2     || null;
+      const hist     = data.kpi_hist4    || [];
+      const satHist  = data.kpi_satHist  || [];
+      const anomHist = data.kpi_anomHist || [];
+      const anomHistShip = data.kpi_anomHistShip || [];
+
+      showSaving(true);
+      const existingDates    = new Set(window._dailyCache.map(r=>r.date));
+      const existingWks      = new Set(window._histCache.map(h=>h.wk));
+      const existingSatMons  = new Set((window._satHistCache||[]).map(h=>h.monStr));
+      const existingAnomMons = new Set((window._anomalyHistCache||[]).map(h=>h.monStr));
+      const existingAnomHm   = new Set((window._anomalyHistShipCache||[]).map(h=>h.hmStart));
+      let addedD=0, addedH=0, addedS=0, addedA=0, addedAS=0;
+      for(const r of daily){
+        if(!existingDates.has(r.date)){ await window.fbSetDaily(r); addedD++; }
+      }
+      for(const h of hist){
+        if(!existingWks.has(h.wk)){ await window.fbSetHist(h); addedH++; }
+      }
+      for(const s of satHist){
+        if(s.monStr && !existingSatMons.has(s.monStr)){ await window.fbSetSatHist(s); addedS++; }
+      }
+      for(const a of anomHist){
+        if(a.monStr && !existingAnomMons.has(a.monStr)){ await window.fbSetAnomalyHist(a); addedA++; }
+      }
+      for(const a of anomHistShip){
+        if(a.hmStart && !existingAnomHm.has(a.hmStart)){ await window.fbSetAnomalyHistShip(a); addedAS++; }
+      }
+      if(sat && !window._satCache) await window.fbSetSat(sat);
+      await window.loadAllData();
+      showSaving(false);
+      alert(`✅ 匯入完成！\n新增每日記錄：${addedD} 筆\n新增週KPI記錄：${addedH} 筆\n新增滿意度週快照：${addedS} 筆\n新增異常率登記：${addedA} 筆\n新增異常率出貨：${addedAS} 筆\n（已存在的資料不會被覆蓋）`);
+      renderReply(); renderOrder(); renderQuarter(); renderTrend();
+      loadSatInputs(); calcSat(); populateWeekSel(); renderKPI();
+    } catch(err) {
+      showSaving(false);
+      alert('匯入失敗：檔案格式不正確，請使用本工具匯出的 JSON 備份檔。');
+    }
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+// ══════ Init ══════
+function showSaving(on){
+  let el = document.getElementById('saving-indicator');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'saving-indicator';
+    el.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#185FA5;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;z-index:999;transition:opacity .3s;';
+    document.body.appendChild(el);
+  }
+  el.textContent = on ? '☁️ 儲存中...' : '✅ 已同步';
+  el.style.opacity = '1';
+  if(!on) setTimeout(()=>el.style.opacity='0', 1500);
+}
+
+async function init(){
+  showSaving(true);
+  await window.loadAllData();
+  showSaving(false);
+  initDate('d-date');
+  initDate('d-date2');
+  loadSatInputs();
+  calcSat();
+  renderReply();
+  renderOrder();
+  renderQuarter();
+  populateWeekSel();
+}
+
+// Wait for Firebase to be ready then init
+function waitForFb(){
+  return new Promise(resolve => {
+    if(window.fbReady){ resolve(); }
+    else { window.fbReadyResolve = resolve; }
+  });
+}
+waitForFb().then(init);
+</script>
+
+<script>
+// ══════ 蝦皮 API 串接 ══════
+const SP_PARTNER_ID_DEFAULT = 2037746;
+const SHOPEE_API_BASE = 'https://partner.shopeemobile.com';
+const SHOPEE_PROXY_BASE = 'https://shopee-proxy-zeta.vercel.app';
+
+function spGetConfig(){
+  try {
+    return JSON.parse(localStorage.getItem('shopeeConfig') || '{}');
+  } catch(e){ return {}; }
+}
+function spSetConfig(obj){
+  try { localStorage.setItem('shopeeConfig', JSON.stringify(obj)); } catch(e){}
+}
+
+function spSavePartner(){
+  const pid = document.getElementById('sp-partner-id').value.trim();
+  const pkey = document.getElementById('sp-partner-key').value.trim();
+  if(!pid || !pkey){ alert('請填入 Partner ID 和 Partner Key'); return; }
+  const cfg = spGetConfig();
+  cfg.partnerId = parseInt(pid);
+  cfg.partnerKey = pkey;
+  spSetConfig(cfg);
+  document.getElementById('sp-partner-status').textContent = '✅ 已儲存';
+  spRenderAcctList();
+}
+
+function spRenderAcctList(){
+  const cfg = spGetConfig();
+  const tokens = cfg.tokens || {};
+  const container = document.getElementById('sp-acct-list');
+  if(!container) return;
+  container.innerHTML = ACCTS.map(a => {
+    const tok = tokens[a];
+    const hasToken = tok && tok.accessToken;
+    const expiry = tok && tok.expiry ? new Date(tok.expiry*1000).toLocaleDateString('zh-TW') : '—';
+    const shopId = tok && tok.shopId ? tok.shopId : '—';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:.5px solid rgba(0,0,0,.07);flex-wrap:wrap;">
+      <span class="acct-badge acc-${a}" style="margin:0;min-width:60px;text-align:center;">帳號 ${a}</span>
+      <span style="font-size:12px;color:${hasToken?'#2d7a2d':'#aaa'};">${hasToken?'✅ 已授權':'⬜ 未授權'}</span>
+      ${hasToken?`<span style="font-size:11px;color:#aaa;">Shop ID: ${shopId} ｜ 到期: ${expiry}</span>`:''}
+      <button class="bsm" style="margin-left:auto;" onclick="spAuthorize('${a}')">🔑 授權</button>
+      ${hasToken?`<button class="bsm" style="color:#c00;" onclick="spRevokeToken('${a}')">移除</button>`:''}
+    </div>`;
+  }).join('');
+}
+
+async function spAuthorize(acct){
+  const cfg = spGetConfig();
+  if(!cfg.partnerId || !cfg.partnerKey){
+    alert('請先填入並儲存 Partner ID 和 Partner Key');
+    return;
+  }
+  // 把待授權帳號存起來，callback 後知道是哪個帳號
+  localStorage.setItem('shopeeAuthPending', acct);
+
+  const partnerId = cfg.partnerId;
+  const partnerKey = cfg.partnerKey;
+  const timestamp = Math.floor(Date.now()/1000);
+  const redirectUrl = window.location.href.split('?')[0];
+
+  // 產生簽章：HMAC-SHA256(partnerId + "/api/v2/shop/auth_partner" + timestamp)
+  const baseStr = `${partnerId}/api/v2/shop/auth_partner${timestamp}`;
+  const enc = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey('raw', enc.encode(partnerKey), {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
+  const sigBuf = await crypto.subtle.sign('HMAC', cryptoKey, enc.encode(baseStr));
+  const sign = Array.from(new Uint8Array(sigBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+
+  const authUrl = `${SHOPEE_API_BASE}/api/v2/shop/auth_partner?partner_id=${partnerId}&timestamp=${timestamp}&sign=${sign}&redirect=${encodeURIComponent(redirectUrl)}`;
+  window.location.href = authUrl;
+}
+
+function spRevokeToken(acct){
+  if(!confirm(`確定要移除帳號 ${acct} 的授權嗎？`)) return;
+  const cfg = spGetConfig();
+  if(cfg.tokens) delete cfg.tokens[acct];
+  spSetConfig(cfg);
+  spRenderAcctList();
+}
+
+async function spExchangeToken(code, shopId){
+  const cfg = spGetConfig();
+  const partnerId = cfg.partnerId;
+  const partnerKey = cfg.partnerKey;
+  
+  // 產生簽章 (用 Web Crypto API)
+  const timestamp = Math.floor(Date.now()/1000);
+  const baseStr = `${partnerId}/api/v2/auth/token/get${timestamp}`;
+  const enc = new TextEncoder();
+  const keyData = enc.encode(partnerKey);
+  const msgData = enc.encode(baseStr);
+  const cryptoKey = await crypto.subtle.importKey('raw', keyData, {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
+  const sigBuf = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
+  const sign = Array.from(new Uint8Array(sigBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  
+  const url = `${SHOPEE_PROXY_BASE}/api/shopee/auth/token/get?partner_id=${partnerId}&timestamp=${timestamp}&sign=${sign}`;
+  const body = JSON.stringify({ code, shop_id: parseInt(shopId), partner_id: partnerId });
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body
+  });
+  return await res.json();
+}
+
+async function spHandleCallback(){
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const shopId = params.get('shop_id');
+  const pendingAcct = localStorage.getItem('shopeeAuthPending');
+  
+  if(!code || !shopId || !pendingAcct) return;
+  
+  // 清除網址參數
+  window.history.replaceState({}, '', window.location.pathname);
+  localStorage.removeItem('shopeeAuthPending');
+  
+  // 切換到串接頁面
+  const btn = document.querySelector("[onclick=\"showPage('shopee',this)\"]");
+  if(btn) showPage('shopee', btn);
+  
+  document.getElementById('sp-partner-status').textContent = '🔄 正在換取 Token...';
+  
+  try {
+    const result = await spExchangeToken(code, shopId);
+    if(result.access_token){
+      const cfg = spGetConfig();
+      if(!cfg.tokens) cfg.tokens = {};
+      cfg.tokens[pendingAcct] = {
+        accessToken: result.access_token,
+        refreshToken: result.refresh_token,
+        shopId: parseInt(shopId),
+        expiry: Math.floor(Date.now()/1000) + (365*24*3600)
+      };
+      spSetConfig(cfg);
+      document.getElementById('sp-partner-status').textContent = `✅ 帳號 ${pendingAcct} 授權成功！`;
+      spRenderAcctList();
+    } else {
+      document.getElementById('sp-partner-status').textContent = '❌ 換取 Token 失敗：' + (result.message || JSON.stringify(result));
+    }
+  } catch(e) {
+    document.getElementById('sp-partner-status').textContent = '❌ 錯誤：' + e.message;
+  }
+}
+
+async function spGetShopPerformance(partnerId, partnerKey, shopId, accessToken){
+  const timestamp = Math.floor(Date.now()/1000);
+  const baseStr = `${partnerId}/api/v2/account_health/get_shop_performance${timestamp}${accessToken}${shopId}`;
+  const enc = new TextEncoder();
+  const keyData = enc.encode(partnerKey);
+  const msgData = enc.encode(baseStr);
+  const cryptoKey = await crypto.subtle.importKey('raw', keyData, {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
+  const sigBuf = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
+  const sign = Array.from(new Uint8Array(sigBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  
+  const url = `${SHOPEE_PROXY_BASE}/api/shopee/account_health/get_shop_performance?partner_id=${partnerId}&timestamp=${timestamp}&sign=${sign}&access_token=${accessToken}&shop_id=${shopId}`;
+  const res = await fetch(url);
+  return await res.json();
+}
+
+async function spSyncAll(){
+  const cfg = spGetConfig();
+  if(!cfg.partnerId || !cfg.partnerKey){ alert('請先設定 Partner ID 和 Partner Key'); return; }
+  const tokens = cfg.tokens || {};
+  
+  const btn = document.getElementById('sp-sync-btn');
+  const result = document.getElementById('sp-sync-result');
+  btn.disabled = true;
+  btn.textContent = '🔄 同步中...';
+  result.innerHTML = '';
+  
+  const lines = [];
+  for(const acct of ACCTS){
+    const tok = tokens[acct];
+    if(!tok || !tok.accessToken){
+      lines.push(`<div style="color:#aaa;">帳號 ${acct}：未授權，跳過</div>`);
+      continue;
+    }
+    try {
+      const data = await spGetShopPerformance(cfg.partnerId, cfg.partnerKey, tok.shopId, tok.accessToken);
+      if(data.response && data.response.metric_list){
+        const metrics = data.response.metric_list;
+        // metric_id 11 = Chat Response Rate, metric_id 95 = Customer Satisfaction
+        const chatRate = metrics.find(m => m.metric_id === 11);
+        const satisfaction = metrics.find(m => m.metric_id === 95);
+        
+        const rr = chatRate ? (chatRate.current_period * 100).toFixed(2) : null;
+        const sat = satisfaction ? (satisfaction.current_period * 100).toFixed(2) : null;
+        
+        lines.push(`<div style="color:#2d7a2d;">帳號 ${acct}：回覆率 ${rr ? rr+'%' : '—'}，滿意度 ${sat ? sat+'%' : '—'}</div>`);
+        
+        // 自動填入回覆率欄位
+        if(rr !== null){
+          const rrInput = document.getElementById('rr-' + acct);
+          if(rrInput){ rrInput.value = rr; }
+        }
+      } else {
+        lines.push(`<div style="color:#c00;">帳號 ${acct}：${data.message || '取得資料失敗'}</div>`);
+      }
+    } catch(e){
+      lines.push(`<div style="color:#c00;">帳號 ${acct}：錯誤 ${e.message}</div>`);
+    }
+  }
+  
+  result.innerHTML = lines.join('');
+  btn.disabled = false;
+  btn.textContent = '🔄 同步所有帳號數據';
+}
+
+// 頁面載入時初始化
+document.addEventListener('DOMContentLoaded', function(){
+  // 處理 OAuth callback
+  spHandleCallback();
+  
+  // 載入已存的 Partner 設定
+  const cfg = spGetConfig();
+  if(cfg.partnerId) document.getElementById('sp-partner-id') && (document.getElementById('sp-partner-id').value = cfg.partnerId);
+  
+  // 渲染帳號列表
+  spRenderAcctList();
+});
+</script>
+
+</body>
+</html>
