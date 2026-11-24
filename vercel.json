@@ -1,5 +1,11 @@
 {
   "rewrites": [
     { "source": "/api/shopee/:path*", "destination": "/api/shopee?path=:path*" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron",
+      "schedule": "0 15 * * *"
+    }
   ]
 }
