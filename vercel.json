@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/api/shopee/:path*", "destination": "/api/shopee?path=:path*" }
+  ]
+}
