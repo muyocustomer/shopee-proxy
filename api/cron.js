@@ -95,8 +95,8 @@ export default async function handler(req, res) {
       }
     }
 
-    // ── 3. 寫入今天的回覆率到 Firebase ──
-    const today = twDateStr(0);
+    // ── 3. 寫入昨天的回覆率到 Firebase（早上8點跑，記錄前一天資料）──
+    const today = twDateStr(1);
     const writeResults = [];
 
     if (Object.keys(results).length > 0) {
